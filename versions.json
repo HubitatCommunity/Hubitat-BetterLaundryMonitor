@@ -1,0 +1,21 @@
+{
+        "Comment": "Last updated: 05/08/2018",
+        "copyright": " &#9400; 2018 cSteele",
+        "versions": {
+                "Application": {
+                        "BLMparent": "1.1",
+                        "BLMchild": "1.1" 
+                },
+                "Driver": {
+                },
+
+                "UpdateInfo": {
+                        "Application": {
+                                "BLMparent": "Updated: 08/08/2018",
+                                "BLMchild": "Updated: 08/08/2018" 
+                        },
+                        "Driver": {
+                        }
+                }
+        }
+}
