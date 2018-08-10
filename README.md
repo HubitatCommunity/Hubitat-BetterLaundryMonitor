@@ -1,5 +1,5 @@
 # Hubitat-BetterLaundryMonitor
 
-Ported Kevin Tierney's SmartThings DTH to Hubitat Driver by @ChrisUthe.
-Converted to Parent-Child App by cSteele.
-Added @CobraVmax version check.
+<p>Ported Kevin Tierney's SmartThings DTH to Hubitat Driver by @ChrisUthe.
+<br>Converted to Parent-Child App by cSteele.
+<br>Added @CobraVmax version check.
