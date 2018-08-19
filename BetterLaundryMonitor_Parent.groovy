@@ -30,7 +30,7 @@ preferences {
 
 // App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
 def setAppVersion(){
-     state.version = "1.1"
+     state.version = "1.2"
      state.InternalName = "BLMparent"
      state.Type = "Application"
 }
@@ -59,12 +59,12 @@ def mainPage() {
     dynamicPage(name: "mainPage") {
       display()
 	section {    
-			paragraph title: "Better Laundry Monitor",
-			"This parent app is a container for all Better Laundry Monitor - Power Switch child apps"
+			paragraph title: "<Better Laundry Monitor",
+			"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
 	}
       section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
         
-      section() {label title: "Enter a name for this parent app (optional)", required: false}
+      section (title: "<b>Name/Rename</b>") {label title: "Enter a name for this parent app (optional)", required: false}
  } 
 }
 
