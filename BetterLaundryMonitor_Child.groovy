@@ -64,6 +64,7 @@ def mainPage() {
         input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)",multiple: true, required: false
         input "phone", "phone", title: "Send a text message to:", required: false
       }
+      section() {label title: "Enter a name for this parent app (optional)", required: false}
    }
 }
 
