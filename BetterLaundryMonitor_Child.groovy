@@ -37,7 +37,7 @@ preferences {
 
 // App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
 def setAppVersion(){
-     state.version = "1.1"
+     state.version = "1.2"
      state.InternalName = "BLMchild"
      state.Type = "Application"
 }
@@ -45,25 +45,26 @@ def setAppVersion(){
 def mainPage() {
     dynamicPage(name: "mainPage") {
       display()
-      section ("When this device stops drawing power") {
+      section ("<b>When this device stops drawing power</b>") {
         input "meter", "capability.powerMeter", multiple: false, required: true
       }
-      section ("Power Thresholds", hidden: false, hideable: true) {
+      section ("<b>Power Thresholds</b>", hidden: false, hideable: true) {
         input "startThreshold", "decimal", title: "start cycle when power raises above (W)", description: "8", required: false
         input "endThreshold", "decimal", title: "stop cycle when power drops below (W)", description: "4", required: false
         input "delayEnd", "number", title: "stop only after the power has been below the threashold for this many reportings:", description: "2", required: false
       }
     
-      section ("Send this message") {
+      section ("<b>Send this message</b>") {
         input "message", "text", title: "Notification message", description: "Laundry is done!", required: true
       }
     
-      section (title: "Notification method") {
+      section (title: "<b>Using this Notification Method</b>") {
         input "sendPushMessage", "bool", title: "Send a push notification?"
         input "speechOut", "capability.speechSynthesis", title:"Speak Via: (Speech Synthesis)",multiple: true, required: false
         input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)",multiple: true, required: false
         input "phone", "phone", title: "Send a text message to:", required: false
       }
+      section (title: "<b>Name/Rename</b>") {label title: "This child app's Name (optional)", required: false}
    }
 }
 
@@ -159,8 +160,8 @@ def display(){
     updatecheck()
     section{
             paragraph "Version Status: $state.Status"
-			paragraph "Current Version: $state.version -  $state.Copyright"
-			}
+		paragraph "Current Version: $state.version -  $state.Copyright"
+    }
 }
 
 def updatecheck(){
