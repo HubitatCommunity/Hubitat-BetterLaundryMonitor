@@ -167,7 +167,8 @@ def display(){
 def updatecheck(){
     
     setAppVersion()
-    def paramsUD = [uri: "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/versions.json"]
+    def paramsUD = [uri: "https://hubitatcommunity.github.io/Hubitat-BetterLaundryMonitor/versions.json"]
+
        try {
         httpGet(paramsUD) { respUD ->
  //  log.info " Version Checking - Response Data: ${respUD.data}"
