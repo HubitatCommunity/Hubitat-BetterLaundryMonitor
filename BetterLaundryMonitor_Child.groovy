@@ -37,7 +37,7 @@ preferences {
 
 // App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
 def setAppVersion(){
-     state.version = "1.2"
+     state.version = "1.3"
      state.InternalName = "BLMchild"
      state.Type = "Application"
 }
@@ -64,6 +64,13 @@ def mainPage() {
         input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)",multiple: true, required: false
         input "phone", "phone", title: "Send a text message to:", required: false
       }
+      section ("Choose Devices") {
+            input "switchList", "capability.switch",
+                title: "Which Switches?",
+                multiple: true,
+                hideWhenEmpty: false,
+                required: false             
+      }
       section (title: "<b>Name/Rename</b>") {label title: "This child app's Name (optional)", required: false}
    }
 }
@@ -81,6 +88,7 @@ def updated() {
 
 def initialize() {
   subscribe(meter, "power", handler)
+//  subscribe(switch1, "switch", switchListHandler)
   atomicState.cycleOn = false
   atomicState.powerOffDelay = 0
   startThreshold = startThreshold ?: 8
@@ -88,18 +96,30 @@ def initialize() {
   delayEnd = delayEnd ?: 2
   schedule("0 0 14 ? * FRI *", updatecheck)
   version()
+  log.trace "Cycle: ${atomicState.cycleOn}"
   log.trace "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
+  state.startThreshold = startThreshold
+  state.endThreshold   = endThreshold
+  state.delayEnd       = delayEnd
+  switchList.off()
 }
 
 def handler(evt) {
   def latestPower = meter.currentValue("power")
+ 
+  startThreshold = state.startThreshold
+  endThreshold   = state.endThreshold  
+  delayEnd       = state.delayEnd
+
   log.trace "Power: ${latestPower}W"
   log.trace "State: ${atomicState.cycleOn}"
+  log.trace "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
 
   //Added latestpower < 1000 to deal with spikes that triggered false alarms
   if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower) {
     atomicState.cycleOn = true   
-    log.trace "Cycle started."
+    log.trace "Cycle started. State: ${atomicState.cycleOn}"
+    switchList.on()
   }
       //first time we are below the threashhold, hold and wait for a second.
       else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < delayEnd){
@@ -121,6 +141,7 @@ def handler(evt) {
         atomicState.cycleEnd = now()
         atomicState.powerOffDelay = 0
         log.trace "State: ${atomicState.cycleOn}"
+        switchList.off()
   }
 }
 
