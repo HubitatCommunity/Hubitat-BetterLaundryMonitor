@@ -4,7 +4,7 @@
         "versions": {
                 "Application": {
                         "BLMparent": "1.2",
-                        "BLMchild": "1.2" 
+                        "BLMchild": "1.3" 
                 },
                 "Driver": {
                 },
@@ -12,7 +12,7 @@
                 "UpdateInfo": {
                         "Application": {
                                 "BLMparent": "Updated: 19/08/2018",
-                                "BLMchild": "Updated: 19/08/2018" 
+                                "BLMchild": "Updated: 29/08/2018" 
                         },
                         "Driver": {
                         }
