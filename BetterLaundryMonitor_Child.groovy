@@ -101,7 +101,7 @@ def initialize() {
   state.startThreshold = startThreshold
   state.endThreshold   = endThreshold
   state.delayEnd       = delayEnd
-  switchList.off()
+  if(switchList) {switchList.off()}
 }
 
 def handler(evt) {
@@ -119,7 +119,7 @@ def handler(evt) {
   if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower) {
     atomicState.cycleOn = true   
     log.trace "Cycle started. State: ${atomicState.cycleOn}"
-    switchList.on()
+    if(switchList) { switchList.on() }
   }
       //first time we are below the threashhold, hold and wait for a second.
       else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < delayEnd){
@@ -141,7 +141,7 @@ def handler(evt) {
         atomicState.cycleEnd = now()
         atomicState.powerOffDelay = 0
         log.trace "State: ${atomicState.cycleOn}"
-        switchList.off()
+        if(switchList) { switchList.off() }
   }
 }
 
