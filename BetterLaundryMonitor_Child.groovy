@@ -1,4 +1,8 @@
 /**
+ *  Hubitat Import URL: https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy
+ */
+
+/**
  *  Alert on Power Consumption
  *
  *  Copyright 2015 Kevin Tierney
