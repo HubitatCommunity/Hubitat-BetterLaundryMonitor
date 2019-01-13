@@ -4,4 +4,7 @@
 <br>Converted to Parent-Child App by cSteele.
 <br>Added @CobraVmax version check.
 <br>Added readability to Parent and Child Apps and incorporated xxKeoxx's Child name/rename request.
-  
+<p>Copy the 'raw' source files into Hubitat, parent then child. 
+<br>Add New User App and pick the Parent code. (Child will be found by parent)
+<br>Open the App and build as many child apps as are needed, one for each washer or dryer.
+<p>
