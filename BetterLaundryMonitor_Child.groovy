@@ -41,7 +41,7 @@ preferences {
 
 // App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
 def setAppVersion(){
-     state.version = "1.3"
+     state.version = "1.3.1"
      state.InternalName = "BLMchild"
      state.Type = "Application"
 }
