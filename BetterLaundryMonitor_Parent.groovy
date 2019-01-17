@@ -1,6 +1,7 @@
 /**
  *  Hubitat Import URL: https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy
  */
+
 /**
  *  Alert on Power Consumption
  *
@@ -23,8 +24,10 @@ definition(
     author: "Kevin Tierney",
     description: "Using a switch with powerMonitor capability, monitor the laundry cycle and alert when it's done.",
     category: "Green Living",
-    iconUrl: "https://s3.amazonaws.com/smartthings-device-icons/Appliances/appliances8-icn.png",
-    iconX2Url: "https://s3.amazonaws.com/smartthings-device-icons/Appliances/appliances8-icn@2x.png")
+    iconUrl: "",
+    iconX2Url: "",
+    iconX3Url: "",
+    )
 
 
 preferences {
@@ -33,18 +36,18 @@ preferences {
 
 // App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
 def setAppVersion(){
-     state.version = "1.2"
+     state.version = "1.2.1"
      state.InternalName = "BLMparent"
      state.Type = "Application"
 }
 
 def installed() {
-    log.debug "Installed with settings: ${settings}"
+    log.info "Installed with settings: ${settings}"
     initialize()
 }
 
 def updated() {
-    log.debug "Updated with settings: ${settings}"
+    log.info "Updated with settings: ${settings}"
     unschedule()
     unsubscribe()
     initialize()
@@ -62,8 +65,8 @@ def mainPage() {
     dynamicPage(name: "mainPage") {
       display()
 	section {    
-			paragraph title: "<Better Laundry Monitor",
-			"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
+		paragraph title: "<Better Laundry Monitor",
+		"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
 	}
       section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
         
@@ -112,4 +115,4 @@ def updatecheck(){
         catch (e) {
         log.error "Something went wrong: $e"
     }
-}        
+}
