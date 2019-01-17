@@ -69,25 +69,28 @@ def mainPage() {
         input "phone", "phone", title: "Send a text message to:", required: false
       }
       section ("Choose Devices") {
-            input "switchList", "capability.switch",
-                title: "Which Switches?",
-                multiple: true,
-                hideWhenEmpty: false,
-                required: false             
+        input "switchList", "capability.switch",
+            title: "Which Switches?",
+            multiple: true,
+            hideWhenEmpty: false,
+            required: false             
       }
-      section (title: "<b>Name/Rename</b>") {label title: "This child app's Name (optional)", required: false}
+      section (title: "<b>Name/Rename</b>") {
+        label title: "This child app's Name (optional)", required: false
+        input "debugOutput", "bool", title: "Enable Debug Logging?", required: false}
    }
 }
 
 def installed() {
   initialize()
-  log.debug "Installed with settings: ${settings}"
+  log.info "Installed with settings: ${settings}"
 }
 
 def updated() {
   unsubscribe()
+  if (debugOutput) runIn(1800,logsOff)
   initialize()
-  log.debug "Updated with settings: ${settings}"
+  log.info "Updated with settings: ${settings}"
 }
 
 def initialize() {
@@ -100,12 +103,17 @@ def initialize() {
   delayEnd = delayEnd ?: 2
   schedule("0 0 14 ? * FRI *", updatecheck)
   version()
-  log.trace "Cycle: ${atomicState.cycleOn}"
-  log.trace "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
+  log.info "Cycle: ${atomicState.cycleOn}"
+  log.info "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
   state.startThreshold = startThreshold
   state.endThreshold   = endThreshold
   state.delayEnd       = delayEnd
   if(switchList) {switchList.off()}
+}
+
+def logsOff(){
+    log.warn "debug logging disabled..."
+    app?.updateSetting("debugOutput",[value:"false",type:"bool"])
 }
 
 def handler(evt) {
@@ -115,24 +123,24 @@ def handler(evt) {
   endThreshold   = state.endThreshold  
   delayEnd       = state.delayEnd
 
-  log.trace "Power: ${latestPower}W"
-  log.trace "State: ${atomicState.cycleOn}"
-  log.trace "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
+  if(debugOutput) log.debug "Power: ${latestPower}W"
+  if(debugOutput) log.debug "State: ${atomicState.cycleOn}"
+  if(debugOutput) log.debug "thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
 
   //Added latestpower < 1000 to deal with spikes that triggered false alarms
   if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower) {
     atomicState.cycleOn = true   
-    log.trace "Cycle started. State: ${atomicState.cycleOn}"
+    if(debugOutput) log.debug "Cycle started. State: ${atomicState.cycleOn}"
     if(switchList) { switchList.on() }
   }
       //first time we are below the threashhold, hold and wait for a second.
       else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < delayEnd){
       	atomicState.powerOffDelay = atomicState.powerOffDelay + 1
-          log.trace "We hit delay ${atomicState.powerOffDelay} times"
+          if(debugOutput) log.debug "We hit delay ${atomicState.powerOffDelay} times"
       }
         //Reset Delay if it only happened once
       else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
-          log.trace "We hit the delay ${atomicState.powerOffDelay} times but cleared it"
+          if(debugOutput) log.debug "We hit the delay ${atomicState.powerOffDelay} times but cleared it"
           atomicState.powerOffDelay = 0;
           
         }
@@ -144,7 +152,7 @@ def handler(evt) {
         atomicState.cycleOn = false
         atomicState.cycleEnd = now()
         atomicState.powerOffDelay = 0
-        log.trace "State: ${atomicState.cycleOn}"
+        if(debugOutput) log.debug "State: ${atomicState.cycleOn}"
         if(switchList) { switchList.off() }
   }
 }
@@ -158,7 +166,7 @@ private send(msg) {
     sendSms(phone, msg)
   }
 
-  log.debug msg
+  if(debugOutput) log.debug msg
 }
 
 private speakMessage(msg) {
@@ -215,4 +223,4 @@ def updatecheck(){
         catch (e) {
         log.error "Something went wrong: $e"
     }
-}        
+}
