@@ -71,6 +71,7 @@ def mainPage() {
       section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
         
       section (title: "<b>Name/Rename</b>") {label title: "Enter a name for this parent app (optional)", required: false}
+      section ("Other preferences"){input "isDebugEnabled", "bool", title: "Enable Debugging?", defaultValue: false}
  } 
 }
 
@@ -115,4 +116,10 @@ def updatecheck(){
         catch (e) {
         log.error "Something went wrong: $e"
     }
+}
+
+private logDebug(msg) {
+	if (isDebugEnabled != false) {
+		log.debug "$msg"
+	}
 }
