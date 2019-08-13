@@ -3,7 +3,7 @@
         "comment": "",
         "copyright": " &#9400; 2018 cSteele",
          "application": {
-                 "BLMparent": {"ver": "1.2.3", "updated": "12/08/2019"},
+                 "BLMparent": {"ver": "1.4.0", "updated": "12/08/2019"},
                  "BLMchild":  {"ver": "1.4.0", "updated": "12/08/2019"}
          },
          "driver": {
