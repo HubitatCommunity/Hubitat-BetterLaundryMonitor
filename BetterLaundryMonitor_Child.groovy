@@ -107,14 +107,13 @@ def informPage() {
 	dynamicPage(name: "informPage") {
 		section ("<b>Send this message</b>", hidden: false, hideable: true) {
 			input "messageStart", "text", title: "Notification message Start (optional)", description: "Laundry is started!", required: false
-			input "message", "text", title: "Notification message End", description: "Laundry is done!", required: false
+			input "message", "text", title: "Notification message End", description: "Laundry is done!", required: true
 		}
 		section (title: "<b>Using this Notification Method</b>", hidden: false, hideable: true) {
-			input "sendPushMessage", "bool", title: "Send a push notification?"
+			input "textNotification", "capability.notification", title: "Send Via: (Notification)", multiple: true, required: false
 			input "speechOut", "capability.speechSynthesis", title:"Speak Via: (Speech Synthesis)", multiple: true, required: false
 			input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)", multiple: true, required: false
-			input "textNotification", "capability.notification", title: "Notification", multiple: true, required: false
-			input "phone", "phone", title: "Send a text message to:", required: false
+			input "phone", "phone", title: "SMS Via: <i>(phone number)</i>", required: false
 		}
 		section ("<b>Choose Additional Devices</b>") {
 		  	input "switchList", "capability.switch", title: "Which Switches?", description: "Have a switch follow the active state", multiple: true, hideWhenEmpty: false, required: false             
@@ -224,7 +223,6 @@ def checkRunning() {
 
 
 private send(msg) {
-	if (sendPushMessage) { sendPush(msg) }
 	if (phone) { sendSms(phone, msg) }
 	if (speechOut) { speechOut.speak(msg) }
 	if (player){ player.playText(msg) }
@@ -293,7 +291,6 @@ def updateCheck()
 
 def updateCheckHandler(resp, data) 
 {
-
 	state.InternalName = "BLMchild"
 	
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
