@@ -5,7 +5,7 @@
 /**
  *  Alert on Power Consumption
  *
- *  Copyright 2015 Kevin Tierney
+ *  Copyright 2015 Kevin Tierney, C Steele
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -17,12 +17,14 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+	public static String version()      {  return "v1.4.0"  }
+
 
 definition(
     name: "Better Laundry Monitor",
     namespace: "tierneykev",
-    author: "Kevin Tierney",
-    description: "Using a switch with powerMonitor capability, monitor the laundry cycle and alert when it's done.",
+    author: "Kevin Tierney, CSteele",
+    description: "Using a switch with powerMonitor capability, monitor the laundry cycle and alert when it starts or done.",
     category: "Green Living",
     iconUrl: "",
     iconX2Url: "",
@@ -34,92 +36,128 @@ preferences {
      page name: "mainPage", title: "", install: true, uninstall: true // ,submitOnChange: true      
 } 
 
-// App Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
-def setAppVersion(){
-     state.version = "1.2.2"
-     state.InternalName = "BLMparent"
-     state.Type = "Application"
-}
-
-def installed() {
-    log.info "Installed with settings: ${settings}"
-    initialize()
-}
-
-def updated() {
-    log.info "Updated with settings: ${settings}"
-    unschedule()
-    unsubscribe()
-    initialize()
-}
-
-def initialize() {
-    version()
-    log.info "There are ${childApps.size()} child smartapps"
-    childApps.each {child ->
-    log.info "Child app: ${child.label}"
-    }
-}
 
 def mainPage() {
-    dynamicPage(name: "mainPage") {
-      display()
-	section {    
-		paragraph title: "<Better Laundry Monitor",
-		"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
-	}
-      section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
-        
-      section (title: "<b>Name/Rename</b>") {label title: "Enter a name for this parent app (optional)", required: false}
-      section ("Other preferences"){input "isDebugEnabled", "bool", title: "Enable Debugging?", defaultValue: false}
- } 
+	dynamicPage(name: "mainPage") {
+		section {    
+			paragraph title: "<Better Laundry Monitor",
+			"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
+		}
+      	section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
+      	  
+      	section (title: "<b>Name/Rename</b>") {label title: "Enter a name for this parent app (optional)", required: false}
+	
+		section ("Other preferences") {
+			input "debugOutput",   "bool", title: "<b>Enable debug logging?</b>", defaultValue: true
+			input "descTextEnable","bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
+		}
+      	display()
+	} 
 }
 
 
-// Check Version   ***** with great thanks and acknowlegment to Cobra (CobraVmax) for his original version checking code ********
-def version(){
-    updatecheck()
-    if (state.Type == "Application") { schedule("0 0 14 ? * FRI *", updatecheck) }
-    if (state.Type == "Driver") { schedule("0 45 16 ? * MON *", updatecheck) }
+def installed() {
+	log.debug "Installed with settings: ${settings}"
+	initialize()
 }
 
-def display(){
-    version()
-    section{
-            paragraph "Version Status: $state.Status"
-			paragraph "Current Version: $state.version -  $state.Copyright"
-			}
-}
-def updatecheck(){
-    
-    setAppVersion()
-    def paramsUD = [uri: "https://hubitatcommunity.github.io/Hubitat-BetterLaundryMonitor/versions.json"]
-       try {
-        httpGet(paramsUD) { respUD ->
- //  log.info " Version Checking - Response Data: ${respUD.data}"
-       def copyNow = (respUD.data.copyright)
-       state.Copyright = copyNow
-            def newver = (respUD.data.versions.(state.Type).(state.InternalName))
-            def updatecheckVer = (respUD.data.versions.(state.Type).(state.InternalName).replace(".", ""))
-       def updatecheckOld = state.version.replace(".", "")
-       if(updatecheckOld < updatecheckVer){
-		state.Status = "<b>** New Version Available (Version: $newver) **</b>"
-           log.warn "** There is a newer version of this $state.Type available  (Version: $newver) **"
-       }    
-       else{ 
-      state.Status = "Current"
-      log.info "$state.Type is the current version"
-       }
-       
-       }
-        } 
-        catch (e) {
-        log.error "Something went wrong: $e"
-    }
+
+def updated() {
+	log.debug "Updated with settings: ${settings}"
+	unschedule()
+	unsubscribe()
+	schedule("0 0 14 ? * FRI *", updateCheck)
+//	if (debugOutput) runIn(1800,logsOff)
+	initialize()
 }
 
-private logDebug(msg) {
-	if (isDebugEnabled != false) {
-		log.debug "$msg"
+
+def initialize() {
+	log.info "There are ${childApps.size()} child smartapps"
+	childApps.each {child ->
+		child.setDebug(debugOutput, descTextEnable)
+		log.info "Child app: ${child.label}"
 	}
 }
+
+
+def logsOff() {
+    log.warn "debug logging disabled..."
+    app?.updateSetting("debugOutput",[value:"false",type:"bool"])
+}
+
+
+def display() {
+	updateCheck() 
+	section{
+		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
+		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
+	}
+}
+  
+
+// Check Version   ***** with great thanks and acknowledgment to Cobra (CobraVmax) for his original code ****
+def updateCheck()
+{    
+	def paramsUD = [uri: "https://hubitatcommunity.github.io/Hubitat-BetterLaundryMonitor/version2.json"]
+	
+ 	asynchttpGet("updateCheckHandler", paramsUD) 
+}
+
+
+def updateCheckHandler(resp, data) {
+
+	state.InternalName = "BLMparent"
+	
+	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
+		respUD = parseJson(resp.data)
+		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
+		state.Copyright = "${thisCopyright}"
+		// uses reformattted 'version2.json' 
+		def newVerRaw = (respUD.application.(state.InternalName).ver)
+		def newVer = (respUD.application.(state.InternalName).ver.replaceAll("[.vV]", ""))
+		def currentVer = version().replaceAll("[.vV]", "")                
+		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
+		def author = (respUD.author)
+            // log.debug "updateCheck: $newVerRaw, $state.UpdateInfo, $author"
+	
+		if(newVer == "NLS")
+		{
+		      state.Status = "<b>** This Application is no longer supported by $author  **</b>"       
+		      log.warn "** This Application is no longer supported by $author **"      
+		}           
+		else if(currentVer < newVer)
+		{
+		      state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
+		      log.warn "** There is a newer version of this Application available  (Version: $newVerRaw) **"
+		      log.warn "** $state.UpdateInfo **"
+		} 
+		else if(currentVer > newVer)
+		{
+		      state.Status = "<b>You are using a Test version of this Application (Expecting: $newVerRaw)</b>"
+		}
+		else
+		{ 
+		    state.Status = "Current"
+		    if (descTextEnable) log.info "You are using the current version of this Application"
+		}
+	
+	      if(state.Status == "Current")
+	      {
+	           state.UpdateInfo = "N/A"
+	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
+	           sendEvent(name: "ApplicationStatus", value: state.Status)
+	      }
+	      else 
+	      {
+	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
+	           sendEvent(name: "ApplicationStatus", value: state.Status)
+	      }
+      }
+      else
+      {
+           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
+      }
+}
+
+def getThisCopyright(){"&copy; 2019 C Steele "}

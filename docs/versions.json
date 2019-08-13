@@ -3,8 +3,8 @@
         "copyright": " &#9400; 2018 cSteele",
         "versions": {
                 "Application": {
-                        "BLMparent": "1.2.2",
-                        "BLMchild": "1.3.2" 
+                        "BLMparent": "1.2.3",
+                        "BLMchild": "1.4.0" 
                 },
                 "Driver": {
                 },
