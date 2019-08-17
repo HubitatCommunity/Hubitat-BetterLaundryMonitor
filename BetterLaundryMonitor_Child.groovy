@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.0"  }
+	public static String version()      {  return "v1.4.1"  }
 
 
 import groovy.time.*
@@ -50,7 +50,7 @@ def mainPage() {
 		section("<h2>${app.label ?: app.name}</h2>"){}
 		section("-= <b>Main Menu</b> =-") 
 		{
-			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Acceleration Sensor"], required:true, submitOnChange:true)
+			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor"], required:true, submitOnChange:true)
 		}
 		if (deviceType) {
 			section
@@ -75,7 +75,7 @@ def sensorPage() {
 				input "pwrMeter", "capability.powerMeter", title: "Power Meter" , multiple: false, required: false, defaultValue: null
 			}
 		}
-		if (deviceType == "accelerationSensor") {
+		if (deviceType == "accelerationSensor" || deviceType == "accelSensor") {
 			section("<b>When vibration stops on this device</b>") {
 				input "accelSensor", "capability.accelerationSensor", title: "Acceleration Sensor" , multiple: false, required: false, defaultValue: null
 			}
@@ -87,16 +87,24 @@ def sensorPage() {
 def thresholdPage() {
 	dynamicPage(name: "thresholdPage") {
 		if (deviceType == "accelerationSensor") {
-			section("<b>Time Thresholds (in minutes)</b>", hidden: false, hideable: true) {
-				input "cycleTime", "decimal", title: "Minimum cycle time", required: false, defaultValue: 10
-				input "fillTime", "decimal", title: "Time to fill tub", required: false, defaultValue: 5
+			section("<b>Vibration Thresholds</b>", hidden: false, hideable: true) {
+				input "delayEndAcc", "number", title: "Stop after no vibration for this many sequential reportings:", defaultValue: "2", required: false
+				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
 			}
 		}
 		if (deviceType == "powerMeter") {
 			section ("<b>Power Thresholds</b>", hidden: false, hideable: true) {
 				input "startThreshold", "decimal", title: "Start cycle when power raises above (W)", defaultValue: "8", required: false
 				input "endThreshold", "decimal", title: "Stop cycle when power drops below (W)", defaultValue: "4", required: false
-				input "delayEnd", "number", title: "Stop only after the power has been below the threshold for this many reportings:", defaultValue: "2", required: false
+				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings:", defaultValue: "2", required: false
+				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
+			}
+		}
+		if (deviceType == "accelSensor") {
+			section("<b>Time Thresholds (in minutes)</b>", hidden: false, hideable: true) {
+				input "fillTime", "decimal", title: "Time to fill tub (0 for Dryer)", required: false, defaultValue: 5
+				input "cycleTime", "decimal", title: "Minimum cycle time", required: false, defaultValue: 10
+				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
 			}
 		}
 	}
@@ -127,7 +135,7 @@ def getSelectOk()
 	def status =
 	[
 		sensorPage: pwrMeter ?: accelSensor,
-		thresholdPage: cycleTime ?: fillTime ?: startThreshold ?: endThreshold ?: delayEnd,
+		thresholdPage: cycleTime ?: fillTime ?: startThreshold ?: endThreshold ?: delayEndAcc ?: delayEndPwr,
 		informPage: messageStart?.size() ?: message?.size()
 	]
 	status << [all: status.sensorPage ?: status.thresholdPage ?: status.informPage]
@@ -136,45 +144,112 @@ def getSelectOk()
 
 def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")	
-	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
+	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}"
 	
 	if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower < 10000) { // latestpower < 1000: eliminate spikes that trigger false alarms
 		send(messageStart)
 		atomicState.cycleOn = true   
 		if (debugOutput) log.debug "Cycle started. State: ${atomicState.cycleOn}"
 		if(switchList) { switchList.on() }
+		def delay = Math.floor(cycleMax * 60).toInteger()
+		runIn(delay, checkCycleMax) // start the deadman timer 		
 	}
-		//first time we are below the threshhold, hold and wait for X more.
-		else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < (delayEnd -1)){
-			atomicState.powerOffDelay++
-			if (debugOutput) log.debug "We hit delay ${atomicState.powerOffDelay} times"
-		}
-		//Reset Delay if it only happened once
-		else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
-			atomicState.powerOffDelay = 0;
-			if (debugOutput) log.debug "We hit the delay ${atomicState.powerOffDelay} times but cleared it"
-		    
-		}
-		// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
-		else if (atomicState.cycleOn && latestPower < endThreshold) {
-			send(message)
-			atomicState.cycleOn = false
-			atomicState.cycleEnd = now()
-			atomicState.powerOffDelay = 0
-			if (debugOutput) log.debug "State: ${atomicState.cycleOn}"
-			if(switchList) { switchList.off() }
+		//first time we are below the threshold, hold and wait for X more.
+	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < (delayEndPwr-1)){
+		atomicState.powerOffDelay++
+		if (debugOutput) log.debug "We hit delay ${atomicState.powerOffDelay} times"
+	}
+	//Reset Delay if it only happened once
+	else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
+		if (debugOutput) log.debug "We hit the delay ${atomicState.powerOffDelay} times but cleared it"
+		atomicState.powerOffDelay = 0;
+	    
+	}
+	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
+	else if (atomicState.cycleOn && latestPower < endThreshold) {
+		send(message)
+		atomicState.cycleOn = false
+		atomicState.cycleEnd = now()
+		atomicState.powerOffDelay = 0
+		if (debugOutput) log.debug "State: ${atomicState.cycleOn}"
+		if(switchList) { switchList.off() }
 	}
 }
 
 
+def accelerationHandler(evt) {
+	latestAccel = (evt.value == 'active') ? true : false
+	if (debugOutput) log.debug "$evt.value, isRunning: $state.isRunning, evt: $latestAccel"
+
+	if (!state.isRunning && latestAccel) { 
+		if (debugOutput) log.debug "Arming detector, cycle started"
+		state.isRunning = true
+		state.startedAt = now()
+		def delay = Math.floor(cycleMax * 60).toInteger()
+		runIn(delay, checkCycleMax) // start the deadman timer 
+		if (switchList) switchList.on()
+		send(messageStart)
+	}
+	//first time we are go inactive, hold and wait for X more.
+	else if (state.isRunning && !latestAccel && state.accelOffDelay < (delayEndAcc-1)) {
+		state.accelOffDelay++
+		if (debugOutput) log.debug "We hit delay ${state.accelOffDelay} times"
+	}
+	//Reset Delay if it only happened once
+	else if (state.isRunning && latestAccel && state.accelOffDelay != 0) {
+		if (debugOutput) log.debug "We hit the delay ${state.accelOffDelay} times but cleared it"
+		state.accelOffDelay = 0;
+	}
+	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
+	else if (state.isRunning && !latestAccel) {
+		send(message)
+		state.isRunning = false
+		state.cycleEnd = now()
+		state.accelOffDelay = 0
+		if (debugOutput) log.debug "Cycle ended. State: ${state.isRunning}"
+		if(switchList) { switchList.off() }
+	}
+
+}
+
+/*
+	checkCycleMax
+    
+	If acceleration is being used, isRunning will be true.
+	If power is being used, cycleOn will be true. 
+	
+*/
+def checkCycleMax() {
+	if (state.isRunning) {
+		send(message)
+		state.isRunning = false
+		state.cycleEnd = now()
+		state.accelOffDelay = 0
+		if (debugOutput) log.debug "Cycle ended by deadman timer. State: ${state.isRunning}"
+		if(switchList) { switchList.off() }
+	}
+	if (atomicState.cycleOn) {
+		send(message)
+		atomicState.cycleOn = false
+		atomicState.cycleEnd = now()
+		atomicState.powerOffDelay = 0
+		if (debugOutput) log.debug "Cycle ended by deadman timer. State: ${atomicState.cycleOn}"
+		if(switchList) { switchList.off() }
+	}
+}
+
+
+
 // Thanks to ritchierich for these Acceleration methods
 def accelerationActiveHandler(evt) {
-	if (debugOutput) log.debug "vibration"
+	if (debugOutput) log.debug "vibration, $evt.value"
 	if (!state.isRunning) {
 		if (debugOutput) log.debug "Arming detector"
 		state.isRunning = true
 		state.startedAt = now()
-		if(switchList) { switchList.on() }
+		def delay = Math.floor(cycleMax * 60).toInteger()
+		runIn(delay, checkCycleMax) // start the deadman timer 
+		if (switchList) switchList.on()
 		send(messageStart)
 	}
 	state.stoppedAt = null
@@ -182,11 +257,11 @@ def accelerationActiveHandler(evt) {
 
 
 def accelerationInactiveHandler(evt) {
-	if (debugOutput) log.debug "no vibration, isRunning: $state.isRunning"
-	if (state.isRunning) {
+	if (debugOutput) log.debug "no vibration, $evt.value, isRunning: $state.isRunning, $state.accelOffDelay"
+	if (state.isRunning && state.accelOffDelay >= (delayEndAcc)) {
 		if (!state.stoppedAt) {
 			state.stoppedAt = now()
-            	def delay = Math.floor(fillTime * 60).toInteger()
+            	def delay = fillTime ? Math.floor(fillTime * 60).toInteger() : 2
 			runIn(delay, checkRunning, [overwrite: false])
 		}
 		if (debugOutput) log.debug "startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
@@ -195,39 +270,44 @@ def accelerationInactiveHandler(evt) {
 
 
 def checkRunning() {
-	if (debugOutput) log.debug "checkRunning()"
+	if (debugOutput) log.debug "checkRunning() $state.accelOffDelay"
 	if (state.isRunning) {
-		def fillTimeMsec = fillTime ? fillTime * 60000 : 300000
+		// def fillTimeMsec = fillTime ? fillTime * 60000 : 300000
+		def fillTimeMsec = fillTime ? fillTime * 60000 : 2000
 		def sensorStates = accelSensor.statesSince("acceleration", new Date((now() - fillTimeMsec) as Long))
 
 		if (!sensorStates.find{it.value == "active"}) {
 			def cycleTimeMsec = cycleTime ? cycleTime * 60000 : 600000
 			def duration = now() - state.startedAt
 			if (duration - fillTimeMsec > cycleTimeMsec) {
-				if(switchList) { switchList.off() }
+		//		if(switchList) { switchList.off() }
 				if (debugOutput) log.debug "Sending notification"
 				send(message)
 			} else {
 				if (debugOutput) log.debug "Not sending notification because machine wasn't running long enough $duration versus $cycleTimeMsec msec"
+				state.accelOffDelay = 0 
 			}
 			state.isRunning = false
-			if (debugOutput) log.debug "Disarming detector"
+			if (switchList)  switchList.off()
+           		if (debugOutput) log.debug "Disarming detector"
 		} else {
 			if (debugOutput) log.debug "skipping notification because vibration detected again"
+			state.accelOffDelay++
 		}
-	}
-	else {
+	} else {
 		if (debugOutput) log.debug "machine no longer running"
 	}
 }
 
 
+
 private send(msg) {
+	if (!msg) return // no message 
 	if (phone) { sendSms(phone, msg) }
 	if (speechOut) { speechOut.speak(msg) }
 	if (player){ player.playText(msg) }
 	if (textNotification) { textNotification.deviceNotification(msg) }
-	if (debugOutput) { log.debug msg }
+	if (debugOutput) { log.debug "send: $msg" }
 }
 
 
@@ -250,9 +330,15 @@ def initialize() {
 	if (settings.deviceType == "powerMeter") {
 		subscribe(pwrMeter, "power", powerHandler)
 		atomicState.cycleOn = false
+		state.isRunning = false
 		atomicState.powerOffDelay = 0
-		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEnd}"
-	} else if (settings.deviceType == "accelerationSensor") {
+		state.accelOffDelay = 0 
+		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}/${delayEndAcc}"
+	} 
+	else if (settings.deviceType == "accelerationSensor") {
+		subscribe(accelSensor, "acceleration", accelerationHandler)
+	}
+	else if (settings.deviceType == "accelSensor") {
 		subscribe(accelSensor, "acceleration.active", accelerationActiveHandler)
 		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
 	}
