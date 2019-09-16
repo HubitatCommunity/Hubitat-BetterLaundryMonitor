@@ -412,7 +412,7 @@ def updateCheckHandler(resp, data)
 		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
 		state.Copyright = "${thisCopyright} -- ${version()}"
 		// uses reformattted 'version2.json' 
-		def newVer = padVer(respUD.driver.(state.InternalName).ver)
+		def newVer = padVer(respUD.application.(state.InternalName).ver)
 		def currentVer = padVer(version())               
 		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
             // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
