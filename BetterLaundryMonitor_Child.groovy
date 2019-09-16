@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.1"  }
+	public static String version()      {  return "v1.4.2"  }
 
 
 import groovy.time.*
@@ -89,7 +89,7 @@ def thresholdPage() {
 		if (deviceType == "accelerationSensor") {
 			section("<b>Vibration Thresholds</b>", hidden: false, hideable: true) {
 				input "delayEndAcc", "number", title: "Stop after no vibration for this many sequential reportings:", defaultValue: "2", required: false
-				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
+				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
 		if (deviceType == "powerMeter") {
@@ -97,14 +97,15 @@ def thresholdPage() {
 				input "startThreshold", "decimal", title: "Start cycle when power raises above (W)", defaultValue: "8", required: false
 				input "endThreshold", "decimal", title: "Stop cycle when power drops below (W)", defaultValue: "4", required: false
 				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings:", defaultValue: "2", required: false
-				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
+                		input "startTimeThreshold", "number", title: "Optional: Time (in minutes) to wait before counting power threshold.  Great for pre-wash soaks.", required: false
+				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
 		if (deviceType == "accelSensor") {
 			section("<b>Time Thresholds (in minutes)</b>", hidden: false, hideable: true) {
 				input "fillTime", "decimal", title: "Time to fill tub (0 for Dryer)", required: false, defaultValue: 5
 				input "cycleTime", "decimal", title: "Minimum cycle time", required: false, defaultValue: 10
-				input "cycleMax", "number", title: "Maximum cycle time (acts as a deadman timer.)", required: false, defaultValue: 60
+				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
 	}
@@ -151,10 +152,16 @@ def powerHandler(evt) {
 		atomicState.cycleOn = true   
 		if (debugOutput) log.debug "Cycle started. State: ${atomicState.cycleOn}"
 		if(switchList) { switchList.on() }
-		def delay = Math.floor(cycleMax * 60).toInteger()
-		runIn(delay, checkCycleMax) // start the deadman timer 		
+        	if (cycleMax) { // start the deadman timer
+		    def delay = Math.floor(cycleMax * 60).toInteger()
+		    runIn(delay, checkCycleMax)
+        	}
 	}
-		//first time we are below the threshold, hold and wait for X more.
+    //If Start Time Threshold was set, check if we have waited that number of minutes before counting the power thresholds
+    else if (startTimeThreshold && delayPowerThreshold()) {
+        //do nothing
+    }
+	//first time we are below the threshold, hold and wait for X more.
 	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < (delayEndPwr-1)){
 		atomicState.powerOffDelay++
 		if (debugOutput) log.debug "We hit delay ${atomicState.powerOffDelay} times"
@@ -171,11 +178,28 @@ def powerHandler(evt) {
 		atomicState.cycleOn = false
 		atomicState.cycleEnd = now()
 		atomicState.powerOffDelay = 0
+        	state.remove("startedAt")
 		if (debugOutput) log.debug "State: ${atomicState.cycleOn}"
 		if(switchList) { switchList.off() }
 	}
 }
 
+def delayPowerThreshold() {
+	def answer = false
+	
+	if (!state.startedAt) {
+	    state.startedAt = now()
+	    answer = true
+	} else {
+	    def startTimeThresholdMsec = startTimeThreshold * 60000
+	    def duration = now() - state.startedAt
+	    if (startTimeThresholdMsec > duration) {
+	        answer = true
+	    }
+	}
+
+    return answer
+}
 
 def accelerationHandler(evt) {
 	latestAccel = (evt.value == 'active') ? true : false
@@ -185,8 +209,10 @@ def accelerationHandler(evt) {
 		if (debugOutput) log.debug "Arming detector, cycle started"
 		state.isRunning = true
 		state.startedAt = now()
-		def delay = Math.floor(cycleMax * 60).toInteger()
-		runIn(delay, checkCycleMax) // start the deadman timer 
+        	if (cycleMax) { // start the deadman timer
+		    def delay = Math.floor(cycleMax * 60).toInteger()
+		    runIn(delay, checkCycleMax)
+        	}
 		if (switchList) switchList.on()
 		send(messageStart)
 	}
@@ -247,8 +273,10 @@ def accelerationActiveHandler(evt) {
 		if (debugOutput) log.debug "Arming detector"
 		state.isRunning = true
 		state.startedAt = now()
-		def delay = Math.floor(cycleMax * 60).toInteger()
-		runIn(delay, checkCycleMax) // start the deadman timer 
+        	if (cycleMax) { // start the deadman timer
+		    def delay = Math.floor(cycleMax * 60).toInteger()
+		    runIn(delay, checkCycleMax)
+        	}
 		if (switchList) switchList.on()
 		send(messageStart)
 	}
@@ -382,51 +410,51 @@ def updateCheckHandler(resp, data)
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
 		respUD = parseJson(resp.data)
 		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
+		state.Copyright = "${thisCopyright} -- ${version()}"
 		// uses reformattted 'version2.json' 
-		def newVerRaw = (respUD.application.(state.InternalName).ver)
-		def newVer = (respUD.application.(state.InternalName).ver.replaceAll("[.vV]", ""))
-		def currentVer = version().replaceAll("[.vV]", "")                
+		def newVer = padVer(respUD.driver.(state.InternalName).ver)
+		def currentVer = padVer(version())               
 		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
-		def author = (respUD.author)
-            // log.debug "updateCheck: $newVerRaw, $state.UpdateInfo, $author"
+            // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
 	
-		if(newVer == "NLS")
-		{
-		      state.Status = "<b>** This Application is no longer supported by $author  **</b>"       
-		      log.warn "** This Application is no longer supported by $author **"      
-		}           
-		else if(currentVer < newVer)
-		{
-		      state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
-		      log.warn "** There is a newer version of this Application available  (Version: $newVerRaw) **"
-		      log.warn "** $state.UpdateInfo **"
-		} 
-		else if(currentVer > newVer)
-		{
-		      state.Status = "<b>You are using a Test version of this Application (Expecting: $newVerRaw)</b>"
+		switch(newVer) {
+			case { it == "NLS"}:
+			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
+			      log.warn "** This Driver is no longer supported by ${respUD.author} **"      
+				break
+			case { it > currentVer}:
+			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
+			      log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
+			      log.warn "** $state.UpdateInfo **"
+				break
+			case { it < currentVer}:
+			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
+				break
+			default:
+				state.Status = "Current"
+				if (descTextEnable) log.info "You are using the current version of this driver"
+				break
 		}
-		else
-		{ 
-		    state.Status = "Current"
-		    if (descTextEnable) log.info "You are using the current version of this Application"
-		}
-	
-	      if(state.Status == "Current")
-	      {
-	           state.UpdateInfo = "N/A"
-	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "ApplicationStatus", value: state.Status)
-	      }
-	      else 
-	      {
-	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "ApplicationStatus", value: state.Status)
-	      }
+
+	      sendEvent(name: "chkUpdate", value: state.UpdateInfo)
+	      sendEvent(name: "chkStatus", value: state.Status)
       }
       else
       {
            log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
       }
+}
+
+/*
+	padVer
+
+	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each column is padded into two-digits first.
+
+*/ 
+def padVer(ver) {
+	def pad = ""
+	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
+	return pad
 }
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
