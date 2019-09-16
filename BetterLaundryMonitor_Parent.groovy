@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.0"  }
+	public static String version()      {  return "v1.4.1"  }
 
 
 definition(
@@ -112,52 +112,51 @@ def updateCheckHandler(resp, data) {
 	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
 		respUD = parseJson(resp.data)
 		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-		state.Copyright = "${thisCopyright}"
+		state.Copyright = "${thisCopyright} -- ${version()}"
 		// uses reformattted 'version2.json' 
-		def newVerRaw = (respUD.application.(state.InternalName).ver)
-		def newVer = (respUD.application.(state.InternalName).ver.replaceAll("[.vV]", ""))
-		def currentVer = version().replaceAll("[.vV]", "")                
+		def newVer = padVer(respUD.driver.(state.InternalName).ver)
+		def currentVer = padVer(version())               
 		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
-		def author = (respUD.author)
-            // log.debug "updateCheck: $newVerRaw, $state.UpdateInfo, $author"
+            // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
 	
-		if(newVer == "NLS")
-		{
-		      state.Status = "<b>** This Application is no longer supported by $author  **</b>"       
-		      log.warn "** This Application is no longer supported by $author **"      
-		}           
-		else if(currentVer < newVer)
-		{
-		      state.Status = "<b>New Version Available (Version: $newVerRaw)</b>"
-		      log.warn "** There is a newer version of this Application available  (Version: $newVerRaw) **"
-		      log.warn "** $state.UpdateInfo **"
-		} 
-		else if(currentVer > newVer)
-		{
-		      state.Status = "<b>You are using a Test version of this Application (Expecting: $newVerRaw)</b>"
+		switch(newVer) {
+			case { it == "NLS"}:
+			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
+			      log.warn "** This Driver is no longer supported by ${respUD.author} **"      
+				break
+			case { it > currentVer}:
+			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
+			      log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
+			      log.warn "** $state.UpdateInfo **"
+				break
+			case { it < currentVer}:
+			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
+				break
+			default:
+				state.Status = "Current"
+				if (descTextEnable) log.info "You are using the current version of this driver"
+				break
 		}
-		else
-		{ 
-		    state.Status = "Current"
-		    if (descTextEnable) log.info "You are using the current version of this Application"
-		}
-	
-	      if(state.Status == "Current")
-	      {
-	           state.UpdateInfo = "N/A"
-	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "ApplicationStatus", value: state.Status)
-	      }
-	      else 
-	      {
-	           sendEvent(name: "ApplicationUpdate", value: state.UpdateInfo)
-	           sendEvent(name: "ApplicationStatus", value: state.Status)
-	      }
+
+	      sendEvent(name: "chkUpdate", value: state.UpdateInfo)
+	      sendEvent(name: "chkStatus", value: state.Status)
       }
       else
       {
            log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
       }
+}
+
+/*
+	padVer
+
+	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each column is padded into two-digits first.
+
+*/ 
+def padVer(ver) {
+	def pad = ""
+	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
+	return pad
 }
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
