@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.2"  }
+	public static String version()      {  return "v1.4.3"  }
 
 
 import groovy.time.*
@@ -122,7 +122,7 @@ def informPage() {
 			input "textNotification", "capability.notification", title: "Send Via: (Notification)", multiple: true, required: false
 			input "speechOut", "capability.speechSynthesis", title:"Speak Via: (Speech Synthesis)", multiple: true, required: false
 			input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)", multiple: true, required: false
-			input "phone", "phone", title: "SMS Via: <i>(phone number)</i>", required: false
+//			input "phone", "phone", title: "SMS Via: <i>(phone number)</i>", required: false
 		}
 		section ("<b>Choose Additional Devices</b>") {
 		  	input "switchList", "capability.switch", title: "Which Switches?", description: "Have a switch follow the active state", multiple: true, hideWhenEmpty: false, required: false             
@@ -331,7 +331,7 @@ def checkRunning() {
 
 private send(msg) {
 	if (!msg) return // no message 
-	if (phone) { sendSms(phone, msg) }
+//	if (phone) { sendSms(phone, msg) }
 	if (speechOut) { speechOut.speak(msg) }
 	if (player){ player.playText(msg) }
 	if (textNotification) { textNotification.deviceNotification(msg) }
@@ -412,7 +412,7 @@ def updateCheckHandler(resp, data)
 		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
 		state.Copyright = "${thisCopyright} -- ${version()}"
 		// uses reformattted 'version2.json' 
-		def newVer = padVer(respUD.driver.(state.InternalName).ver)
+		def newVer = padVer(respUD.application.(state.InternalName).ver)
 		def currentVer = padVer(version())               
 		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
             // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
