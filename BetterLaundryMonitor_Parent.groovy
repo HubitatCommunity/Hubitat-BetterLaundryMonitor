@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.1"  }
+	public static String version()      {  return "v1.4.3"  }
 
 
 definition(
@@ -66,8 +66,8 @@ def updated() {
 	log.debug "Updated with settings: ${settings}"
 	unschedule()
 	unsubscribe()
-	schedule("0 0 14 ? * FRI *", updateCheck)
-//	if (debugOutput) runIn(1800,logsOff)
+	//	schedule("0 0 14 ? * FRI *", updateCheck) It's run every time it's displayed
+	if (debugOutput) runIn(1800,logsOff)
 	initialize()
 }
 
@@ -121,20 +121,20 @@ def updateCheckHandler(resp, data) {
 	
 		switch(newVer) {
 			case { it == "NLS"}:
-			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
-			      log.warn "** This Driver is no longer supported by ${respUD.author} **"      
+			      state.Status = "<b>** This Application is no longer supported by ${respUD.author}  **</b>"       
+			      log.warn "** This Application is no longer supported by ${respUD.author} **"      
 				break
 			case { it > currentVer}:
-			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
-			      log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
+			      state.Status = "<b>New Version Available (Version: ${respUD.application.(state.InternalName).ver})</b>"
+			      log.warn "** There is a newer version of this Application available  (Version: ${respUD.application.(state.InternalName).ver}) **"
 			      log.warn "** $state.UpdateInfo **"
 				break
 			case { it < currentVer}:
-			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
+			      state.Status = "<b>You are using a Test version of this Application (Expecting: ${respUD.application.(state.InternalName).ver})</b>"
 				break
 			default:
 				state.Status = "Current"
-				if (descTextEnable) log.info "You are using the current version of this driver"
+				if (descTextEnable) log.info "You are using the current version of this Application"
 				break
 		}
 

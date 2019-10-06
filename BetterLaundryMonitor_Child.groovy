@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.3"  }
+	public static String version()      {  return "v1.4.4"  }
 
 
 import groovy.time.*
@@ -122,7 +122,7 @@ def informPage() {
 			input "textNotification", "capability.notification", title: "Send Via: (Notification)", multiple: true, required: false
 			input "speechOut", "capability.speechSynthesis", title:"Speak Via: (Speech Synthesis)", multiple: true, required: false
 			input "player", "capability.musicPlayer", title:"Speak Via: (Music Player -> TTS)", multiple: true, required: false
-//			input "phone", "phone", title: "SMS Via: <i>(phone number)</i>", required: false
+			input "blockIt", "capability.switch", title: "Switch to Block Speak if ON", multiple: false, required: false
 		}
 		section ("<b>Choose Additional Devices</b>") {
 		  	input "switchList", "capability.switch", title: "Which Switches?", description: "Have a switch follow the active state", multiple: true, hideWhenEmpty: false, required: false             
@@ -331,11 +331,11 @@ def checkRunning() {
 
 private send(msg) {
 	if (!msg) return // no message 
-//	if (phone) { sendSms(phone, msg) }
-	if (speechOut) { speechOut.speak(msg) }
-	if (player){ player.playText(msg) }
 	if (textNotification) { textNotification.deviceNotification(msg) }
 	if (debugOutput) { log.debug "send: $msg" }
+	if (state.blockItState) return // no noise please.
+	if (speechOut) { speechOut.speak(msg) }
+	if (player){ player.playText(msg) }
 }
 
 
@@ -349,6 +349,7 @@ def installed() {
 
 def updated() {
 	initialize()
+	if (blockIt) {subscribe(blockIt, "switch", blockItHandler)}
 	if (descTextEnable) log.info "Updated with settings: ${settings}"
 }
 
@@ -370,10 +371,15 @@ def initialize() {
 		subscribe(accelSensor, "acceleration.active", accelerationActiveHandler)
 		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
 	}
-	schedule("0 0 14 ? * FRI *", updateCheck)
+	//	schedule("0 0 14 ? * FRI *", updateCheck) It's run every time it's displayed
 	if(switchList) {switchList.off()}
 //	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 //	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
+}
+
+
+def blockItHandler(evt) {
+	state?.blockItState = evt.value ? true : false
 }
 
 
@@ -419,20 +425,20 @@ def updateCheckHandler(resp, data)
 	
 		switch(newVer) {
 			case { it == "NLS"}:
-			      state.Status = "<b>** This Driver is no longer supported by ${respUD.author}  **</b>"       
-			      log.warn "** This Driver is no longer supported by ${respUD.author} **"      
+			      state.Status = "<b>** This Application is no longer supported by ${respUD.author}  **</b>"       
+			      log.warn "** This Application is no longer supported by ${respUD.author} **"      
 				break
 			case { it > currentVer}:
-			      state.Status = "<b>New Version Available (Version: ${respUD.driver.(state.InternalName).ver})</b>"
-			      log.warn "** There is a newer version of this Driver available  (Version: ${respUD.driver.(state.InternalName).ver}) **"
+			      state.Status = "<b>New Version Available (Version: ${respUD.application.(state.InternalName).ver})</b>"
+			      log.warn "** There is a newer version of this Application available  (Version: ${respUD.application.(state.InternalName).ver}) **"
 			      log.warn "** $state.UpdateInfo **"
 				break
 			case { it < currentVer}:
-			      state.Status = "<b>You are using a Test version of this Driver (Expecting: ${respUD.driver.(state.InternalName).ver})</b>"
+			      state.Status = "<b>You are using a Test version of this Application (Expecting: ${respUD.application.(state.InternalName).ver})</b>"
 				break
 			default:
 				state.Status = "Current"
-				if (descTextEnable) log.info "You are using the current version of this driver"
+				if (descTextEnable) log.info "You are using the current version of this Application"
 				break
 		}
 
