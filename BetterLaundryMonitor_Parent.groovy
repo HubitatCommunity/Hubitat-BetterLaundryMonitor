@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.3"  }
+	public static String version()      {  return "v1.4.4"  }
 
 
 definition(
