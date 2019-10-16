@@ -52,6 +52,7 @@ def mainPage() {
 		{
 			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor"], required:true, submitOnChange:true)
 		}
+
 		if (deviceType) {
 			section
 			{
@@ -61,7 +62,22 @@ def mainPage() {
 			}
 		}
 		section (title: "<b>Name/Rename</b>") {
+			String defaultLabel = "Better Laundry Monitor - Power Switch"
 			label title: "This child app's Name (optional)", required: false
+			
+			if (!app.label) {
+				app.updateLabel(defaultLabel)
+				atomicState.appDisplayName = defaultLabel
+			}
+			if (app.label.contains('<span ')) {
+				if (atomicState?.appDisplayName != null) {
+					app.updateLabel(atomicState.appDisplayName)
+				} else {
+					String myLabel = app.label.substring(0, app.label.indexOf('<span '))
+					atomicState.appDisplayName = myLabel
+					app.updateLabel(myLabel)
+				}				
+			}
 		}
 		display()
 	}
@@ -147,9 +163,10 @@ def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")	
 	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}"
 	
-	if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower < 10000) { // latestpower < 1000: eliminate spikes that trigger false alarms
+	if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower < 1500) { // latestpower < 1000: eliminate spikes that trigger false alarms
 		send(messageStart)
-		atomicState.cycleOn = true   
+		atomicState.cycleOn = true
+		atomicState.cycleStart = now()
 		if (debugOutput) log.debug "Cycle started. State: ${atomicState.cycleOn}"
 		if(switchList) { switchList.on() }
         	if (cycleMax) { // start the deadman timer
@@ -372,6 +389,7 @@ def initialize() {
 		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
 	}
 	//	schedule("0 0 14 ? * FRI *", updateCheck) It's run every time it's displayed
+	schedule("17 5 0 * * ?", updateMyLabel)	// Fix the date string after the day changes
 	if(switchList) {switchList.off()}
 //	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 //	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
@@ -449,6 +467,65 @@ def updateCheckHandler(resp, data)
       {
            log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
       }
+}
+
+void updateMyLabel() {
+	boolean ST = false
+	String flag = '<span '
+	
+	// Display Ecobee connection status as part of the label...
+	String myLabel = atomicState.appDisplayName
+	if ((myLabel == null) || !app.label.startsWith(myLabel)) {
+		myLabel = app.label
+		if (!myLabel.contains(flag)) atomicState.appDisplayName = myLabel
+	} 
+	if (myLabel.contains(flag)) {
+		// strip off any connection status tag
+		myLabel = myLabel.substring(0, myLabel.indexOf(flag))
+		atomicState.appDisplayName = myLabel
+	}
+	String newLabel
+	if (atomicState.cycleOn) {
+		String beganAt = atomicState.cycleStart ? "started " + fixDateTimeString(atomicState.cycleStart) : 'running'
+		newLabel = myLabel + "<span style=\"color:green\"> (${beganAt})</span>"
+	} else if (!atomicState.cycleOn) {
+		String endedAt = atomicState.cycleEnd ? "finished " + fixDateTimeString(atomicState.cycleEnd) : 'idle'
+		newLabel = myLabel + "<span style=\"color:green\"> (${endedAt})</span>"
+	} else {
+		newLabel = myLabel
+	}
+	if (app.label != newLabel) app.updateLabel(newLabel)
+}
+String fixDateTimeString( eventDate) {
+
+	def today = new Date(now()).clearTime()
+	def target = new Date(eventDate).clearTime()
+	
+	String resultStr = ''
+	String myDate = ''
+	String myTime = ''
+	boolean showTime = true
+	
+	if (target == today) {
+		myDate = 'today'	
+	} else if (target == today-1) {
+		myDate = 'yesterday'
+	} else if (target == today+1) {
+		myDate = 'tomorrow'
+	} else if (dateStr == '2035-01-01' ) {		// to Infinity
+		myDate = 'a long time from now'
+		showTime = false
+	} else {
+		myDate = 'on '+target.format('MM-dd')
+	}	 
+	if (showTime) {
+		myTime = new Date(eventDate).format('h:mma').toLowerCase()
+	}
+	if (myDate || myTime) {
+		resultStr = myTime ? "${myDate} at ${myTime}" : "${myDate}"
+	}
+	log.debug "fixed: ${resultStr}"
+	return resultStr
 }
 
 /*
