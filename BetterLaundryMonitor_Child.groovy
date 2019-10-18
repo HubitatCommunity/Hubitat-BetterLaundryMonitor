@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.5"  }
+	public static String version()      {  return "v1.4.6"  }
 
 
 import groovy.time.*
@@ -43,11 +43,18 @@ preferences {
 	page (name: "thresholdPage")
 	page (name: "informPage")
 }
-
+//<div style='color:#ffffff;font-weight: bold;background-color:#81BC00;border: 1px solid;box-shadow: 2px 3px #A9A9A9'>${myText}</div>
 
 def mainPage() {
 	dynamicPage(name: "mainPage", install: true, uninstall: true) {
-		section("<h2>${app.label ?: app.name}</h2>"){}
+		updateMyLabel()
+		section("<h2>${app.label ?: app.name}</h2>"){
+			if (!atomicState.isPaused) {
+				input(name: "pauseButton", type: "button", title: "Pause", backgroundColor: "Green", textColor: "white", submitOnChange: true)
+			} else {
+				input(name: "resumeButton", type: "button", title: "Resume", backgroundColor: "Crimson", textColor: "white", submitOnChange: true)
+			}
+		}
 		section("-= <b>Main Menu</b> =-") 
 		{
 			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor"], required:true, submitOnChange:true)
@@ -62,12 +69,10 @@ def mainPage() {
 			}
 		}
 		section (title: "<b>Name/Rename</b>") {
-			String defaultLabel = "Better Laundry Monitor - Power Switch"
-			label title: "This child app's Name (optional)", required: false
-			
+			label title: "This child app's Name (optional)", required: false, submitOnChange: true
 			if (!app.label) {
-				app.updateLabel(defaultLabel)
-				atomicState.appDisplayName = defaultLabel
+				app.updateLabel(app.name)
+				atomicState.appDisplayName = app.name
 			}
 			if (app.label.contains('<span ')) {
 				if (atomicState?.appDisplayName != null) {
@@ -113,6 +118,7 @@ def thresholdPage() {
 				input "startThreshold", "decimal", title: "Start cycle when power raises above (W)", defaultValue: "8", required: false
 				input "endThreshold", "decimal", title: "Stop cycle when power drops below (W)", defaultValue: "4", required: false
 				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings:", defaultValue: "2", required: false
+				input "ignoreThreshold", "decimal", title: "Optional: Ignore extraneous power readings above (W)", defaultValue: "1500", required: false
                 		input "startTimeThreshold", "number", title: "Optional: Time (in minutes) to wait before counting power threshold.  Great for pre-wash soaks.", required: false
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
@@ -141,7 +147,7 @@ def informPage() {
 			input "blockIt", "capability.switch", title: "Switch to Block Speak if ON", multiple: false, required: false
 		}
 		section ("<b>Choose Additional Devices</b>") {
-		  	input "switchList", "capability.switch", title: "Which Switches?", description: "Have a switch follow the active state", multiple: true, hideWhenEmpty: false, required: false             
+		  	input "switchList", "capability.switch", title: "Which Switches?", description: "Switches to follow the active state", multiple: true, hideWhenEmpty: false, required: false             
 		}
 	}
 }
@@ -163,12 +169,13 @@ def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")	
 	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}"
 	
-	if (!atomicState.cycleOn && latestPower >= startThreshold && latestPower < 1500) { // latestpower < 1000: eliminate spikes that trigger false alarms
+	if (!atomicState.cycleOn && (latestPower >= startThreshold) && (latestPower < ignoreThreshold)) { // latestpower < 1000: eliminate spikes that trigger false alarms
 		send(messageStart)
 		atomicState.cycleOn = true
 		atomicState.cycleStart = now()
-		if (debugOutput) log.debug "Cycle started. State: ${atomicState.cycleOn}"
-		if(switchList) { switchList.on() }
+		updateMyLabel()
+		if (debugOutput) log.debug "Cycle started."
+		if(switchList) { switchList*.on() }
         	if (cycleMax) { // start the deadman timer
 		    def delay = Math.floor(cycleMax * 60).toInteger()
 		    runIn(delay, checkCycleMax)
@@ -194,10 +201,11 @@ def powerHandler(evt) {
 		send(message)
 		atomicState.cycleOn = false
 		atomicState.cycleEnd = now()
+		updateMyLabel()
 		atomicState.powerOffDelay = 0
-        	state.remove("startedAt")
-		if (debugOutput) log.debug "State: ${atomicState.cycleOn}"
-		if(switchList) { switchList.off() }
+        state.remove("startedAt")
+		if (debugOutput) log.debug "Cycle finished."
+		if(switchList) { switchList*.off() }
 	}
 }
 
@@ -223,14 +231,17 @@ def accelerationHandler(evt) {
 	if (debugOutput) log.debug "$evt.value, isRunning: $state.isRunning, evt: $latestAccel"
 
 	if (!state.isRunning && latestAccel) { 
-		if (debugOutput) log.debug "Arming detector, cycle started"
+		if (debugOutput) log.debug "Cycle started, arming detector"
 		state.isRunning = true
 		state.startedAt = now()
-        	if (cycleMax) { // start the deadman timer
+		atomicState.cycleOn = true
+		atomicState.cycleStart = now()
+		updateMyLabel()
+        if (cycleMax) { // start the deadman timer
 		    def delay = Math.floor(cycleMax * 60).toInteger()
 		    runIn(delay, checkCycleMax)
-        	}
-		if (switchList) switchList.on()
+        }
+		if (switchList) switchList*.on()
 		send(messageStart)
 	}
 	//first time we are go inactive, hold and wait for X more.
@@ -247,10 +258,12 @@ def accelerationHandler(evt) {
 	else if (state.isRunning && !latestAccel) {
 		send(message)
 		state.isRunning = false
-		state.cycleEnd = now()
+		atomicState.cycleEnd = now()
+		atomicState.cycleOn = false
 		state.accelOffDelay = 0
-		if (debugOutput) log.debug "Cycle ended. State: ${state.isRunning}"
-		if(switchList) { switchList.off() }
+		updateMyLabel()
+		if (debugOutput) log.debug "Cycle finished."
+		if(switchList) { switchList*.off() }
 	}
 
 }
@@ -266,18 +279,21 @@ def checkCycleMax() {
 	if (state.isRunning) {
 		send(message)
 		state.isRunning = false
-		state.cycleEnd = now()
+		atomicState.cycleEnd = now()
+		atomicState.cycleOn = false
 		state.accelOffDelay = 0
-		if (debugOutput) log.debug "Cycle ended by deadman timer. State: ${state.isRunning}"
-		if(switchList) { switchList.off() }
+		updateMyLabel()
+		if (debugOutput) log.debug "Cycle finished by deadman timer. State: ${state.isRunning}"
+		if(switchList) { switchList*.off() }
 	}
 	if (atomicState.cycleOn) {
 		send(message)
 		atomicState.cycleOn = false
 		atomicState.cycleEnd = now()
 		atomicState.powerOffDelay = 0
-		if (debugOutput) log.debug "Cycle ended by deadman timer. State: ${atomicState.cycleOn}"
-		if(switchList) { switchList.off() }
+		updateMyLabel()
+		if (debugOutput) log.debug "Cycle finished by deadman timer. State: ${atomicState.cycleOn}"
+		if(switchList) { switchList*.off() }
 	}
 }
 
@@ -287,14 +303,17 @@ def checkCycleMax() {
 def accelerationActiveHandler(evt) {
 	if (debugOutput) log.debug "vibration, $evt.value"
 	if (!state.isRunning) {
-		if (debugOutput) log.debug "Arming detector"
+		if (debugOutput) log.debug "Cycle started, arming detector"
 		state.isRunning = true
 		state.startedAt = now()
-        	if (cycleMax) { // start the deadman timer
+		atomicState.cycleStart = now()
+		atomicState.cycleOn = true
+		updateMyLabel()
+        if (cycleMax) { // start the deadman timer
 		    def delay = Math.floor(cycleMax * 60).toInteger()
 		    runIn(delay, checkCycleMax)
-        	}
-		if (switchList) switchList.on()
+        }
+		if (switchList) switchList*.on()
 		send(messageStart)
 	}
 	state.stoppedAt = null
@@ -306,10 +325,13 @@ def accelerationInactiveHandler(evt) {
 	if (state.isRunning && state.accelOffDelay >= (delayEndAcc)) {
 		if (!state.stoppedAt) {
 			state.stoppedAt = now()
-            	def delay = fillTime ? Math.floor(fillTime * 60).toInteger() : 2
+			atomicState.cycleEnd = now()
+			atomicState.cycleOn = false
+			updateMyLabel()
+            def delay = fillTime ? Math.floor(fillTime * 60).toInteger() : 2
 			runIn(delay, checkRunning, [overwrite: false])
 		}
-		if (debugOutput) log.debug "startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
+		if (debugOutput) log.debug "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
 	}
 }
 
@@ -325,15 +347,19 @@ def checkRunning() {
 			def cycleTimeMsec = cycleTime ? cycleTime * 60000 : 600000
 			def duration = now() - state.startedAt
 			if (duration - fillTimeMsec > cycleTimeMsec) {
-		//		if(switchList) { switchList.off() }
-				if (debugOutput) log.debug "Sending notification"
+		//		if(switchList) { switchList*.off() }
+				atomicState.cycleEnd = now()
+				if (debugOutput) log.debug "Sending cycle complete notification"
 				send(message)
 			} else {
 				if (debugOutput) log.debug "Not sending notification because machine wasn't running long enough $duration versus $cycleTimeMsec msec"
-				state.accelOffDelay = 0 
+				state.accelOffDelay = 0
+				atomicState.cycleEnd = null		// Change label to "idle"
 			}
 			state.isRunning = false
-			if (switchList)  switchList.off()
+			atomicState.cycleOn = false
+			updateMyLabel()
+			if (switchList)  switchList*.off()
            		if (debugOutput) log.debug "Disarming detector"
 		} else {
 			if (debugOutput) log.debug "skipping notification because vibration detected again"
@@ -348,15 +374,22 @@ def checkRunning() {
 
 private send(msg) {
 	if (!msg) return // no message 
-	if (textNotification) { textNotification.deviceNotification(msg) }
+	if (textNotification) { textNotification*.deviceNotification(msg) }
 	if (debugOutput) { log.debug "send: $msg" }
 	if (state.blockItState) return // no noise please.
-	if (speechOut) { speechOut.speak(msg) }
-	if (player){ player.playText(msg) }
+	if (speechOut) { speechOut*.speak(msg) }
+	if (player){ player*.playText(msg) }
 }
 
 
 def installed() {
+	// Initialize the states only when first installed...
+	atomicState.cycleOn = null		// we don't know if we're running yet
+	state.isRunning = null
+	if (switchList) switchList*.off() 
+	atomicState.powerOffDelay = 0
+	state.accelOffDelay = 0 
+	
 	initialize()
 	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 	app.clearSetting("descTextEnable")
@@ -365,6 +398,8 @@ def installed() {
 
 
 def updated() {
+	unsubscribe()
+	unschedule()
 	initialize()
 	if (blockIt) {subscribe(blockIt, "switch", blockItHandler)}
 	if (descTextEnable) log.info "Updated with settings: ${settings}"
@@ -372,13 +407,12 @@ def updated() {
 
 
 def initialize() {
-	unsubscribe()
+	if (atomicState.isPaused) {
+		updateMyLabel()
+		return
+	}
 	if (settings.deviceType == "powerMeter") {
 		subscribe(pwrMeter, "power", powerHandler)
-		atomicState.cycleOn = false
-		state.isRunning = false
-		atomicState.powerOffDelay = 0
-		state.accelOffDelay = 0 
 		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}/${delayEndAcc}"
 	} 
 	else if (settings.deviceType == "accelerationSensor") {
@@ -390,11 +424,24 @@ def initialize() {
 	}
 	//	schedule("0 0 14 ? * FRI *", updateCheck) It's run every time it's displayed
 	schedule("17 5 0 * * ?", updateMyLabel)	// Fix the date string after the day changes
-	if(switchList) {switchList.off()}
+	updateMyLabel()
+	
 //	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 //	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
 }
 
+def appButtonHandler(btn) {
+    switch(btn) {
+        case "pauseButton":
+			atomicState.isPaused = true
+			updateMyLabel()
+            break
+		case "resumeButton":
+			atomicState.isPaused = false
+			updateMyLabel()
+			break
+    }
+}
 
 def blockItHandler(evt) {
 	state?.blockItState = evt.value ? true : false
@@ -413,7 +460,7 @@ def display()
 	updateCheck()
 	section {
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
-		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
+		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele, Barry Burke<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
     }
 }
 
@@ -476,7 +523,7 @@ void updateMyLabel() {
 	// Display Ecobee connection status as part of the label...
 	String myLabel = atomicState.appDisplayName
 	if ((myLabel == null) || !app.label.startsWith(myLabel)) {
-		myLabel = app.label
+		myLabel = app.label ?: app.name
 		if (!myLabel.contains(flag)) atomicState.appDisplayName = myLabel
 	} 
 	if (myLabel.contains(flag)) {
@@ -485,19 +532,21 @@ void updateMyLabel() {
 		atomicState.appDisplayName = myLabel
 	}
 	String newLabel
-	if (atomicState.cycleOn) {
+	if (atomicState.isPaused) {
+		newLabel = myLabel + '<span style="color:Crimson"> (paused)</span>'
+	} else if (atomicState.cycleOn) {
 		String beganAt = atomicState.cycleStart ? "started " + fixDateTimeString(atomicState.cycleStart) : 'running'
-		newLabel = myLabel + "<span style=\"color:green\"> (${beganAt})</span>"
-	} else if (!atomicState.cycleOn) {
+		newLabel = myLabel + "<span style=\"color:Green\"> (${beganAt})</span>"
+	} else if ((atomicState.cycleOn != null) && (atomicState.cycleOn == false)) {
 		String endedAt = atomicState.cycleEnd ? "finished " + fixDateTimeString(atomicState.cycleEnd) : 'idle'
-		newLabel = myLabel + "<span style=\"color:green\"> (${endedAt})</span>"
+		newLabel = myLabel + "<span style=\"color:Green\"> (${endedAt})</span>"
 	} else {
 		newLabel = myLabel
 	}
 	if (app.label != newLabel) app.updateLabel(newLabel)
 }
+				   
 String fixDateTimeString( eventDate) {
-
 	def today = new Date(now()).clearTime()
 	def target = new Date(eventDate).clearTime()
 	
