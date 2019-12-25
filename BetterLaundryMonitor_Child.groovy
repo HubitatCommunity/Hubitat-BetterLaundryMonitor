@@ -118,6 +118,7 @@ def thresholdPage() {
 				input "startThreshold", "decimal", title: "Start cycle when power raises above (W)", defaultValue: "8", required: false
 				input "endThreshold", "decimal", title: "Stop cycle when power drops below (W)", defaultValue: "4", required: false
 				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings:", defaultValue: "2", required: false
+				input "delayEndDelay", "number", title: "Stop after power has been below the threshold for this many continuous minutes:", defaultValue: "0", required: false
 				input "ignoreThreshold", "decimal", title: "Optional: Ignore extraneous power readings above (W)", defaultValue: "1500", required: false
                 		input "startTimeThreshold", "number", title: "Optional: Time (in minutes) to wait before counting power threshold.  Great for pre-wash soaks.", required: false
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
@@ -167,19 +168,25 @@ def getSelectOk()
 
 def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")	
-	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}"
+	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${ignoreThreshold}"
 	
-	if (!atomicState.cycleOn && (latestPower >= startThreshold) && (latestPower < ignoreThreshold)) { // latestpower < 1000: eliminate spikes that trigger false alarms
+	if (latestPower > endThreshold && atomicState.cycleEnding) {
+		atomicState.cycleEnd = -1
+		atomicState.cycleEnding = false
+		if (debugOutput) log.debug "Resetting end timer"
+	}
+	else if (!atomicState.cycleOn && (latestPower >= startThreshold) && (latestPower < ignoreThreshold)) { // latestpower < 1000: eliminate spikes that trigger false alarms
 		send(messageStart)
 		atomicState.cycleOn = true
+		atomicState.cycleEnding = false
 		atomicState.cycleStart = now()
 		updateMyLabel()
 		if (debugOutput) log.debug "Cycle started."
 		if(switchList) { switchList*.on() }
-        	if (cycleMax) { // start the deadman timer
+		if (cycleMax) { // start the deadman timer
 		    def delay = Math.floor(cycleMax * 60).toInteger()
 		    runIn(delay, checkCycleMax)
-        	}
+		}
 	}
     //If Start Time Threshold was set, check if we have waited that number of minutes before counting the power thresholds
     else if (startTimeThreshold && delayPowerThreshold()) {
@@ -198,15 +205,41 @@ def powerHandler(evt) {
 	}
 	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
 	else if (atomicState.cycleOn && latestPower < endThreshold) {
+		atomicState.cycleEnding = true
+		atomicState.cycleEnd = now()
+		if (delayEndDelay > 0) {
+			if (debugOutput) log.debug "Ending duration is set, waiting"
+			runIn(delayEndDelay*60, cycleDone)
+		}
+		else
+		{
+			send(message)
+			atomicState.cycleOn = false
+			updateMyLabel()
+			atomicState.powerOffDelay = 0
+			state.remove("startedAt")
+			if (debugOutput) log.debug "Cycle finished."
+			if(switchList) { switchList*.off() }
+		}
+
+	}
+}
+
+def cycleDone() {
+	if (atomicState.cycleEnd != -1 && now() - atomicState.cycleEnd > (delayEndDelay*60)-10000) {
 		send(message)
 		atomicState.cycleOn = false
-		atomicState.cycleEnd = now()
+		atomicState.cycleEnding = false
+        atomicState.cycleEnd = now()
 		updateMyLabel()
 		atomicState.powerOffDelay = 0
-        state.remove("startedAt")
-		if (debugOutput) log.debug "Cycle finished."
+		state.remove("startedAt")
+		if (debugOutput) log.debug "Cycle finished after delay."
 		if(switchList) { switchList*.off() }
-	}
+    }
+    else {
+    	if (debugOutput) log.debug "Power resumed during timeout"
+    }
 }
 
 def delayPowerThreshold() {
@@ -385,6 +418,7 @@ private send(msg) {
 def installed() {
 	// Initialize the states only when first installed...
 	atomicState.cycleOn = null		// we don't know if we're running yet
+	atomicState.cycleEnding = null
 	state.isRunning = null
 	if (switchList) switchList*.off() 
 	atomicState.powerOffDelay = 0
