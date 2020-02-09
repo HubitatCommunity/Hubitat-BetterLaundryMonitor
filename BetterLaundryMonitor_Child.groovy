@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.6"  }
+	public static String version()      {  return "v1.4.7"  }
 
 
 import groovy.time.*
@@ -191,6 +191,12 @@ def powerHandler(evt) {
     //If Start Time Threshold was set, check if we have waited that number of minutes before counting the power thresholds
     else if (startTimeThreshold && delayPowerThreshold()) {
         //do nothing
+		if (latestPower < endThreshold) {
+			atomicState.cycleOn = false
+			atomicState.powerOffDelay = 0
+			state.remove("startedAt")
+			if (debugOutput) log.debug "Dropped below threshold before start time threshold, cancelling."
+		}
     }
 	//first time we are below the threshold, hold and wait for X more.
 	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < (delayEndPwr-1)){
