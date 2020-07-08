@@ -168,7 +168,7 @@ def getSelectOk()
 
 def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")	
-	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${ignoreThreshold}"
+    if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${delayEndDelay} optional: ${ignoreThreshold} ${startTimeThreshold} ${cycleMax}"
 	
 	if (latestPower > endThreshold && atomicState.cycleEnding) {
 		atomicState.cycleEnd = -1
