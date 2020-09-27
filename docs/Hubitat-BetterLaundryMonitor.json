@@ -1,0 +1,27 @@
+{
+  "packageName": "Hubitat-BetterLaundryMonitor",
+  "author": "csteele",
+  "version": "1.4.4",
+  "minimumHEVersion": "1.4.4",
+  "dateReleased": "2019-09-07",
+  "apps": [
+    {
+      "id": "ffddcbb2-5ac6-40df-a25c-3a8a3046cc96",
+      "name": "Better Laundry Monitor",
+      "namespace": "tierneykev",
+      "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy",
+      "required": false,
+      "oauth": false,
+      "primary": false
+    },
+    {
+      "id": "3bba1cf8-a2c3-4017-a59c-bc29fca3d0dc",
+      "name": "Better Laundry Monitor - Power Switch",
+      "namespace": "tierneykev",
+      "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy",
+      "required": true,
+      "oauth": false,
+      "primary": false
+    }
+  ]
+}
