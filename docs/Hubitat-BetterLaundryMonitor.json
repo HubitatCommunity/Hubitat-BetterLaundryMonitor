@@ -1,7 +1,6 @@
 {
   "packageName": "Hubitat-BetterLaundryMonitor",
   "author": "csteele",
-  "version": "1.4.4",
   "minimumHEVersion": "1.4.4",
   "dateReleased": "2019-09-07",
   "apps": [
@@ -12,6 +11,7 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy",
       "required": false,
       "oauth": false,
+      "version": "1.4.4",
       "primary": true
     },
     {
@@ -21,7 +21,9 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy",
       "required": true,
       "oauth": false,
+      "version": "1.4.7",
       "primary": false
     }
   ]
 }
+
