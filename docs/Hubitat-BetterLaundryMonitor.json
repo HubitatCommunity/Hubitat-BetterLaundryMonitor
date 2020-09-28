@@ -12,7 +12,7 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy",
       "required": false,
       "oauth": false,
-      "primary": false
+      "primary": true
     },
     {
       "id": "3bba1cf8-a2c3-4017-a59c-bc29fca3d0dc",
