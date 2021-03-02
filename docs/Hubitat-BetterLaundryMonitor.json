@@ -9,7 +9,7 @@
       "name": "Better Laundry Monitor",
       "namespace": "tierneykev",
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy",
-      "required": false,
+      "required": true,
       "oauth": false,
       "version": "1.4.4",
       "primary": true
