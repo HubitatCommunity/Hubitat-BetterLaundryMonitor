@@ -209,8 +209,10 @@ def powerHandler(evt) {
 		atomicState.powerOffDelay = 0;
 	    
 	}
-	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
-	else if (atomicState.cycleOn && latestPower < endThreshold) {
+	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification
+	// or schedule future check if cycleEnd isn't set already
+	else if (atomicState.cycleOn && (latestPower < endThreshold) && (atomicState.cycleEnding != true)) {
+		// cycleDone already scheduled if cycleEnd is set already
 		atomicState.cycleEnding = true
 		atomicState.cycleEnd = now()
 		if (delayEndDelay > 0) {
