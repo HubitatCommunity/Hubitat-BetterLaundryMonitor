@@ -1,5 +1,7 @@
 {
   "packageName": "Hubitat-BetterLaundryMonitor",
+ 	"releaseNotes": "Merged: Fix bug with power updates more frequent than delayEndDelay.",
+	"documentationLink": "https://github.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/blob/master/README.md",
   "author": "csteele",
   "minimumHEVersion": "1.4.4",
   "dateReleased": "2019-09-07",
