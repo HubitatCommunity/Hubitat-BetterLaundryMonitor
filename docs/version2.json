@@ -4,7 +4,7 @@
         "copyright": " &#9400; 2018 cSteele",
          "application": {
                  "BLMparent": {"ver": "1.4.4", "updated": "05/10/2019"},
-                 "BLMchild":  {"ver": "1.4.8", "updated": "23/03/2021"}
+                 "BLMchild":  {"ver": "1.4.9", "updated": "06/08/2021"}
          },         "driver": {
          }
 }
