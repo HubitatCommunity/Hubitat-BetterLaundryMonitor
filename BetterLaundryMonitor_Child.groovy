@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.8"  }
+	public static String version()      {  return "v1.4.9"  }
 
 
 import groovy.time.*
@@ -615,7 +615,7 @@ String fixDateTimeString( eventDate) {
 	if (myDate || myTime) {
 		resultStr = myTime ? "${myDate} at ${myTime}" : "${myDate}"
 	}
-	log.debug "fixed: ${resultStr}"
+	if (debugOutput) { log.debug "banner: ${resultStr}"}
 	return resultStr
 }
 
