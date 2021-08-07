@@ -23,7 +23,7 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.4.8",
+      "version": "1.4.9",
       "primary": false
     }
   ]
