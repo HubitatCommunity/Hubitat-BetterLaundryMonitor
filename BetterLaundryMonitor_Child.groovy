@@ -17,7 +17,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-	public static String version()      {  return "v1.4.9"  }
+	public static String version()      {  return "v1.4.10"  }
 
 
 import groovy.time.*
@@ -67,6 +67,10 @@ def mainPage() {
 				href "thresholdPage", title: "Thresholds", description: "Thresholds to be monitored", state: selectOk?.thresholdPage ? "complete" : null
 				href "informPage", title: "Inform", description: "Who and what to Inform", state: selectOk?.informPage ? "complete" : null
 			}
+		}
+		
+		section (title: "<b>Reset/End Cycle</b>") {
+			input(name: "resetButton", type: "button", title: "Reset", backgroundColor: "Crimson", textColor: "white", submitOnChange: true)
 		}
 		section (title: "<b>Name/Rename</b>") {
 			label title: "This child app's Name (optional)", required: false, submitOnChange: true
@@ -167,8 +171,10 @@ def getSelectOk()
 
 
 def powerHandler(evt) {
-	def latestPower = pwrMeter.currentValue("power")	
-    if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${delayEndDelay} optional: ${ignoreThreshold} ${startTimeThreshold} ${cycleMax}"
+	def latestPower = pwrMeter.currentValue("power")
+	def delayEPloop = delayEndPwr-1 
+
+	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${delayEndDelay} optional: ${ignoreThreshold} ${startTimeThreshold} ${cycleMax}"
 	
 	if (latestPower > endThreshold && atomicState.cycleEnding) {
 		atomicState.cycleEnd = -1
@@ -188,8 +194,8 @@ def powerHandler(evt) {
 		    runIn(delay, checkCycleMax)
 		}
 	}
-    //If Start Time Threshold was set, check if we have waited that number of minutes before counting the power thresholds
-    else if (startTimeThreshold && delayPowerThreshold()) {
+	//If Start Time Threshold was set, check if we have waited that number of minutes before counting the power thresholds
+	else if (startTimeThreshold && delayPowerThreshold()) {
         //do nothing
 		if (latestPower < endThreshold) {
 			atomicState.cycleOn = false
@@ -197,15 +203,15 @@ def powerHandler(evt) {
 			state.remove("startedAt")
 			if (debugOutput) log.debug "Dropped below threshold before start time threshold, cancelling."
 		}
-    }
+	}
 	//first time we are below the threshold, hold and wait for X more.
-	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < (delayEndPwr-1)){
+	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < delayEPloop){
 		atomicState.powerOffDelay++
-		if (debugOutput) log.debug "We hit delay ${atomicState.powerOffDelay} times"
+		if (debugOutput) log.debug "We hit Power Delay ${atomicState.powerOffDelay} times"
 	}
 	//Reset Delay if it only happened once
 	else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
-		if (debugOutput) log.debug "We hit the delay ${atomicState.powerOffDelay} times but cleared it"
+		if (debugOutput) log.debug "We hit the Power Delay ${atomicState.powerOffDelay} times but cleared it"
 		atomicState.powerOffDelay = 0;
 	    
 	}
@@ -226,6 +232,8 @@ def powerHandler(evt) {
 			updateMyLabel()
 			atomicState.powerOffDelay = 0
 			state.remove("startedAt")
+			atomicState.cycleEnd = -1
+			atomicState.cycleEnding = false
 			if (debugOutput) log.debug "Cycle finished."
 			if(switchList) { switchList*.off() }
 		}
@@ -288,11 +296,11 @@ def accelerationHandler(evt) {
 	//first time we are go inactive, hold and wait for X more.
 	else if (state.isRunning && !latestAccel && state.accelOffDelay < (delayEndAcc-1)) {
 		state.accelOffDelay++
-		if (debugOutput) log.debug "We hit delay ${state.accelOffDelay} times"
+		if (debugOutput) log.debug "We hit Acceleration Delay ${state.accelOffDelay} times"
 	}
 	//Reset Delay if it only happened once
 	else if (state.isRunning && latestAccel && state.accelOffDelay != 0) {
-		if (debugOutput) log.debug "We hit the delay ${state.accelOffDelay} times but cleared it"
+		if (debugOutput) log.debug "We hit the Acceleration Delay ${state.accelOffDelay} times but cleared it"
 		state.accelOffDelay = 0;
 	}
 	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification.
@@ -475,13 +483,25 @@ def initialize() {
 def appButtonHandler(btn) {
     switch(btn) {
         case "pauseButton":
-			atomicState.isPaused = true
-			updateMyLabel()
-            break
-		case "resumeButton":
-			atomicState.isPaused = false
-			updateMyLabel()
-			break
+		atomicState.isPaused = true
+		updateMyLabel()
+        break
+        case "resumeButton":
+		atomicState.isPaused = false
+		updateMyLabel()
+        break
+        case "resetButton":
+        	state.isRunning = false
+		atomicState.cycleEnd = now()
+		atomicState.cycleOn = false
+		state.accelOffDelay = 0
+		atomicState.cycleEnd = -1
+		atomicState.cycleEnding = false
+		updateMyLabel()
+		unschedule(checkCycleMax)
+		if (debugOutput) log.debug "Reset to Cycle finished."
+		if(switchList) { switchList*.off() }
+        break
     }
 }
 
