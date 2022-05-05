@@ -3,7 +3,7 @@
  	"releaseNotes": "1.4.10: Adjusted for better end of cycle. \n Added Reset button.\n1.4.9: Merged: Fix bug with power updates more frequent than delayEndDelay.",
 	"documentationLink": "https://github.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/blob/master/README.md",
   "author": "csteele",
-  "minimumHEVersion": "1.4.4",
+  "minimumHEVersion": "1.4.10",
   "dateReleased": "2019-09-07",
   "apps": [
     {
