@@ -16,8 +16,14 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
+ *
+ *
+ * csteele: v1.5.0	Add Contact sensor child
+ *                	 Remove UpdateCheck, rely on HPM to check for a new version.
+ *
  */
-	public static String version()      {  return "v1.4.10"  }
+
+	public static String version()      {  return "v1.5.0"  }
 
 
 import groovy.time.*
@@ -45,6 +51,7 @@ preferences {
 }
 //<div style='color:#ffffff;font-weight: bold;background-color:#81BC00;border: 1px solid;box-shadow: 2px 3px #A9A9A9'>${myText}</div>
 
+
 def mainPage() {
 	dynamicPage(name: "mainPage", install: true, uninstall: true) {
 		updateMyLabel()
@@ -57,7 +64,7 @@ def mainPage() {
 		}
 		section("-= <b>Main Menu</b> =-") 
 		{
-			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor"], required:true, submitOnChange:true)
+			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor", contactSensor:"Contact Sensor"], required:true, submitOnChange:true)
 		}
 
 		if (deviceType) {
@@ -88,6 +95,7 @@ def mainPage() {
 				}				
 			}
 		}
+		reSubscribe()
 		display()
 	}
 }
@@ -103,6 +111,11 @@ def sensorPage() {
 		if (deviceType == "accelerationSensor" || deviceType == "accelSensor") {
 			section("<b>When vibration stops on this device</b>") {
 				input "accelSensor", "capability.accelerationSensor", title: "Acceleration Sensor" , multiple: false, required: false, defaultValue: null
+			}
+		}
+		if (deviceType == "contactSensor") {
+			section("<b>When Contct stops on this device</b>") {
+				input "contactSensor", "capability.contactSensor", title: "Contact Sensor" , multiple: false, required: false, defaultValue: null
 			}
 		}
 	}
@@ -135,6 +148,12 @@ def thresholdPage() {
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
+		if (deviceType == "contactSensor") {
+			section ("<b>Contact Thresholds</b>", hidden: false, hideable: true) {
+				input "contCycleCount", "number", title: "Stop after this many cycles:", defaultValue: "2", required: false
+				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
+			}
+		}
 	}
 }
 
@@ -162,8 +181,8 @@ def getSelectOk()
 {
 	def status =
 	[
-		sensorPage: pwrMeter ?: accelSensor,
-		thresholdPage: cycleTime ?: fillTime ?: startThreshold ?: endThreshold ?: delayEndAcc ?: delayEndPwr,
+		sensorPage: pwrMeter ?: accelSensor ?: contactSensor,
+		thresholdPage: cycleTime ?: fillTime ?: startThreshold ?: endThreshold ?: delayEndAcc ?: delayEndPwr ?: contCycleCount,
 		informPage: messageStart?.size() ?: message?.size()
 	]
 	status << [all: status.sensorPage ?: status.thresholdPage ?: status.informPage]
@@ -187,7 +206,7 @@ def powerHandler(evt) {
 		atomicState.cycleEnding = false
 		atomicState.cycleStart = now()
 		updateMyLabel()
-		if (debugOutput) log.debug "Cycle started."
+		if (descTextEnable) log.info "Cycle started."
 		if(switchList) { switchList*.on() }
 		if (cycleMax) { // start the deadman timer
 		    def delay = Math.floor(cycleMax * 60).toInteger()
@@ -201,7 +220,7 @@ def powerHandler(evt) {
 			atomicState.cycleOn = false
 			atomicState.powerOffDelay = 0
 			state.remove("startedAt")
-			if (debugOutput) log.debug "Dropped below threshold before start time threshold, cancelling."
+			if (descTextEnable) log.info "Dropped below threshold before start time threshold, cancelling."
 		}
 	}
 	//first time we are below the threshold, hold and wait for X more.
@@ -212,8 +231,7 @@ def powerHandler(evt) {
 	//Reset Delay if it only happened once
 	else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
 		if (debugOutput) log.debug "We hit the Power Delay ${atomicState.powerOffDelay} times but cleared it"
-		atomicState.powerOffDelay = 0;
-	    
+		atomicState.powerOffDelay = 0
 	}
 	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification
 	// or schedule future check if cycleEnd isn't set already
@@ -234,19 +252,20 @@ def powerHandler(evt) {
 			state.remove("startedAt")
 			atomicState.cycleEnd = -1
 			atomicState.cycleEnding = false
-			if (debugOutput) log.debug "Cycle finished."
+			if (descTextEnable) log.info "Cycle finished."
 			if(switchList) { switchList*.off() }
 		}
 
 	}
 }
 
+
 def cycleDone() {
 	if (atomicState.cycleEnd != -1 && now() - atomicState.cycleEnd > (delayEndDelay*60)-10000) {
 		send(message)
 		atomicState.cycleOn = false
 		atomicState.cycleEnding = false
-        atomicState.cycleEnd = now()
+		atomicState.cycleEnd = now()
 		updateMyLabel()
 		atomicState.powerOffDelay = 0
 		state.remove("startedAt")
@@ -257,6 +276,7 @@ def cycleDone() {
     	if (debugOutput) log.debug "Power resumed during timeout"
     }
 }
+
 
 def delayPowerThreshold() {
 	def answer = false
@@ -275,12 +295,13 @@ def delayPowerThreshold() {
     return answer
 }
 
+
 def accelerationHandler(evt) {
 	latestAccel = (evt.value == 'active') ? true : false
 	if (debugOutput) log.debug "$evt.value, isRunning: $state.isRunning, evt: $latestAccel"
 
 	if (!state.isRunning && latestAccel) { 
-		if (debugOutput) log.debug "Cycle started, arming detector"
+		if (descTextEnable) log.info "Cycle started, arming detector"
 		state.isRunning = true
 		state.startedAt = now()
 		atomicState.cycleOn = true
@@ -311,17 +332,19 @@ def accelerationHandler(evt) {
 		atomicState.cycleOn = false
 		state.accelOffDelay = 0
 		updateMyLabel()
-		if (debugOutput) log.debug "Cycle finished."
+		if (descTextEnable) log.info "Cycle finished."
 		if(switchList) { switchList*.off() }
 	}
 
 }
+
 
 /*
 	checkCycleMax
     
 	If acceleration is being used, isRunning will be true.
 	If power is being used, cycleOn will be true. 
+	IF contact is being used, cycleOn & isRunning will be true. 
 	
 */
 def checkCycleMax() {
@@ -332,7 +355,7 @@ def checkCycleMax() {
 		atomicState.cycleOn = false
 		state.accelOffDelay = 0
 		updateMyLabel()
-		if (debugOutput) log.debug "Cycle finished by deadman timer. State: ${state.isRunning}"
+		if (descTextEnable) log.info "Cycle finished by deadman timer. State: ${state.isRunning}"
 		if(switchList) { switchList*.off() }
 	}
 	if (atomicState.cycleOn) {
@@ -341,18 +364,17 @@ def checkCycleMax() {
 		atomicState.cycleEnd = now()
 		atomicState.powerOffDelay = 0
 		updateMyLabel()
-		if (debugOutput) log.debug "Cycle finished by deadman timer. State: ${atomicState.cycleOn}"
+		if (descTextEnable) log.info "Cycle finished by deadman timer. State: ${atomicState.cycleOn}"
 		if(switchList) { switchList*.off() }
 	}
 }
-
 
 
 // Thanks to ritchierich for these Acceleration methods
 def accelerationActiveHandler(evt) {
 	if (debugOutput) log.debug "vibration, $evt.value"
 	if (!state.isRunning) {
-		if (debugOutput) log.debug "Cycle started, arming detector"
+		if (descTextEnable) log.info "Cycle started, arming detector"
 		state.isRunning = true
 		state.startedAt = now()
 		atomicState.cycleStart = now()
@@ -378,14 +400,56 @@ def accelerationInactiveHandler(evt) {
 			atomicState.cycleOn = false
 			updateMyLabel()
             def delay = fillTime ? Math.floor(fillTime * 60).toInteger() : 2
-			runIn(delay, checkRunning, [overwrite: false])
+			runIn(delay, checkRunningAccel, [overwrite: false])
 		}
-		if (debugOutput) log.debug "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
+		if (descTextEnable) log.info "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
 	}
 }
 
 
-def checkRunning() {
+def contactHandler(evt) {
+	latestContact = (evt.value == 'open') ? true : false
+	def delayEPloop = contCycleCount-1 
+
+	if (latestContact) {
+		if (!state.isRunning) {
+			if (descTextEnable) log.info "Cycle started, arming detector"
+			state.isRunning = true
+			state.startedAt = now()
+			atomicState.cycleStart = now()
+			atomicState.cycleOn = true
+			updateMyLabel()
+			if (cycleMax) { // start the deadman timer
+			    def delay = Math.floor(cycleMax * 60).toInteger()
+			    runIn(delay, checkCycleMax)
+			}
+			if (switchList) switchList*.on()
+			send(messageStart)
+		}
+		state.stoppedAt = null
+	}
+	else if (!latestContact) {
+	//first time we are below the threshold, hold and wait for X more.
+		if (atomicState.cycleOn && atomicState.contOffDelay < delayEPloop){
+			atomicState.contOffDelay++
+			if (debugOutput) log.debug "We hit Contact Delay ${atomicState.contOffDelay} times"
+		}
+		else if (state.isRunning && state.contOffDelay >= (delayEPloop)) {
+			if (!state.stoppedAt) {
+				state.stoppedAt = now()
+				atomicState.cycleEnd = now()
+				atomicState.cycleOn = false
+				updateMyLabel()
+			}
+			if (descTextEnable) log.info "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
+		}
+	}
+ 
+	if (debugOutput) log.debug "Contact Event: $evt.value, isRunning: $state.isRunning, $state.contOffDelay, latestContact: $latestContact, startTimeThreshold: $startTimeThreshold"
+}
+
+
+def checkRunningAccel() {
 	if (debugOutput) log.debug "checkRunning() $state.accelOffDelay"
 	if (state.isRunning) {
 		// def fillTimeMsec = fillTime ? fillTime * 60000 : 300000
@@ -409,7 +473,7 @@ def checkRunning() {
 			atomicState.cycleOn = false
 			updateMyLabel()
 			if (switchList)  switchList*.off()
-           		if (debugOutput) log.debug "Disarming detector"
+           		if (descTextEnable) log.info "Disarming detector"
 		} else {
 			if (debugOutput) log.debug "skipping notification because vibration detected again"
 			state.accelOffDelay++
@@ -419,6 +483,40 @@ def checkRunning() {
 	}
 }
 
+
+def checkRunningCont() {
+	if (debugOutput) log.debug "checkRunning() $state.contOffDelay"
+	if (state.isRunning) {
+		// def startTimeThresholdMsec = startTimeThreshold ? startTimeThreshold * 60000 : 300000
+		def startTimeThresholdMsec = startTimeThreshold ? startTimeThreshold * 60000 : 2000
+		def sensorStates = contactSensor.statesSince("contactSensor", new Date((now() - startTimeThresholdMsec) as Long))
+
+		if (!sensorStates.find{it.value == "open"}) {
+			def cycleTimeMsec = cycleTime ? cycleTime * 60000 : 600000
+			def duration = now() - state.startedAt
+			if (duration - startTimeThresholdMsec > cycleTimeMsec) {
+		//		if(switchList) { switchList*.off() }
+				atomicState.cycleEnd = now()
+				if (descTextEnable) log.info "Sending cycle complete notification"
+				send(message)
+			} else {
+				if (debugOutput) log.debug "Not sending notification because machine wasn't running long enough $duration versus $cycleTimeMsec msec"
+				state.contOffDelay = 0
+				atomicState.cycleEnd = null		// Change label to "idle"
+			}
+			state.isRunning = false
+			atomicState.cycleOn = false
+			updateMyLabel()
+			if (switchList)  switchList*.off()
+           		if (descTextEnable) log.info "Disarming detector"
+		} else {
+			if (debugOutput) log.debug "skipping notification because contact detected again"
+			state.contOffDelay++
+		}
+	} else {
+		if (debugOutput) log.debug "machine no longer running"
+	}
+}
 
 
 private send(msg) {
@@ -439,6 +537,7 @@ def installed() {
 	if (switchList) switchList*.off() 
 	atomicState.powerOffDelay = 0
 	state.accelOffDelay = 0 
+	state.contOffDelay = 0 
 	
 	initialize()
 	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
@@ -461,24 +560,43 @@ def initialize() {
 		updateMyLabel()
 		return
 	}
-	if (settings.deviceType == "powerMeter") {
-		subscribe(pwrMeter, "power", powerHandler)
-		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}/${delayEndAcc}"
-	} 
-	else if (settings.deviceType == "accelerationSensor") {
-		subscribe(accelSensor, "acceleration", accelerationHandler)
-	}
-	else if (settings.deviceType == "accelSensor") {
-		subscribe(accelSensor, "acceleration.active", accelerationActiveHandler)
-		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
-	}
-	//	schedule("0 0 14 ? * FRI *", updateCheck) It's run every time it's displayed
+	reSubscribe()
+
 	schedule("17 5 0 * * ?", updateMyLabel)	// Fix the date string after the day changes
 	updateMyLabel()
 	
 //	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 //	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
 }
+
+
+def reSubscribe() {
+	if (settings.deviceType == "powerMeter") {
+		unsubscribe(accelSensor)
+		unsubscribe(contactSensor)
+		subscribe(pwrMeter, "power", powerHandler)
+		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}/${delayEndAcc}"
+	} 
+	else if (settings.deviceType == "accelerationSensor") {
+		unsubscribe(pwrMeter)
+		unsubscribe(contactSensor)
+		subscribe(accelSensor, "acceleration", accelerationHandler)
+	}
+	else if (settings.deviceType == "accelSensor") {
+		unsubscribe(pwrMeter)
+		unsubscribe(contactSensor)
+		subscribe(accelSensor, "acceleration.active", accelerationActiveHandler)
+		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
+	}
+	else if (settings.deviceType == "contactSensor") {
+		unsubscribe(pwrMeter)
+		unsubscribe(accelSensor)
+		subscribe(contactSensor, "contact.open", contactHandler)
+		subscribe(contactSensor, "contact.closed", contactHandler)
+		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${contCycleCount}"
+	} 
+}
+
 
 def appButtonHandler(btn) {
     switch(btn) {
@@ -495,6 +613,7 @@ def appButtonHandler(btn) {
 		atomicState.cycleEnd = now()
 		atomicState.cycleOn = false
 		state.accelOffDelay = 0
+		state.contOffDelay = 0
 		atomicState.cycleEnd = -1
 		atomicState.cycleEnding = false
 		updateMyLabel()
@@ -504,6 +623,7 @@ def appButtonHandler(btn) {
         break
     }
 }
+
 
 def blockItHandler(evt) {
 	state?.blockItState = evt.value ? true : false
@@ -519,64 +639,12 @@ def setDebug(dbg, inf) {
 
 def display()
 {
-	updateCheck()
 	section {
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
 		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele, Barry Burke<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
     }
 }
 
-
-// Check Version   ***** with great thanks and acknowledgment to Cobra (CobraVmax) for his original code ****
-def updateCheck()
-{    
-	def paramsUD = [uri: "https://hubitatcommunity.github.io/Hubitat-BetterLaundryMonitor/version2.json"]
-	
- 	asynchttpGet("updateCheckHandler", paramsUD) 
-}
-
-
-def updateCheckHandler(resp, data) 
-{
-	state.InternalName = "BLMchild"
-	
-	if (resp.getStatus() == 200 || resp.getStatus() == 207) {
-		respUD = parseJson(resp.data)
-		//log.warn " Version Checking - Response Data: $respUD"   // Troubleshooting Debug Code - Uncommenting this line should show the JSON response from your webserver 
-		state.Copyright = "${thisCopyright} -- ${version()}"
-		// uses reformattted 'version2.json' 
-		def newVer = padVer(respUD.application.(state.InternalName).ver)
-		def currentVer = padVer(version())               
-		state.UpdateInfo = (respUD.application.(state.InternalName).updated)
-            // log.debug "updateCheck: ${respUD.driver.(state.InternalName).ver}, $state.UpdateInfo, ${respUD.author}"
-	
-		switch(newVer) {
-			case { it == "NLS"}:
-			      state.Status = "<b>** This Application is no longer supported by ${respUD.author}  **</b>"       
-			      log.warn "** This Application is no longer supported by ${respUD.author} **"      
-				break
-			case { it > currentVer}:
-			      state.Status = "<b>New Version Available (Version: ${respUD.application.(state.InternalName).ver})</b>"
-			      log.warn "** There is a newer version of this Application available  (Version: ${respUD.application.(state.InternalName).ver}) **"
-			      log.warn "** $state.UpdateInfo **"
-				break
-			case { it < currentVer}:
-			      state.Status = "<b>You are using a Test version of this Application (Expecting: ${respUD.application.(state.InternalName).ver})</b>"
-				break
-			default:
-				state.Status = "Current"
-				if (descTextEnable) log.info "You are using the current version of this Application"
-				break
-		}
-
-	      sendEvent(name: "chkUpdate", value: state.UpdateInfo)
-	      sendEvent(name: "chkStatus", value: state.Status)
-      }
-      else
-      {
-           log.error "Something went wrong: CHECK THE JSON FILE AND IT'S URI"
-      }
-}
 
 void updateMyLabel() {
 	boolean ST = false
@@ -607,6 +675,7 @@ void updateMyLabel() {
 	}
 	if (app.label != newLabel) app.updateLabel(newLabel)
 }
+
 				   
 String fixDateTimeString( eventDate) {
 	def today = new Date(now()).clearTime()
@@ -639,16 +708,5 @@ String fixDateTimeString( eventDate) {
 	return resultStr
 }
 
-/*
-	padVer
-
-	Version progression of 1.4.9 to 1.4.10 would mis-compare unless each column is padded into two-digits first.
-
-*/ 
-def padVer(ver) {
-	def pad = ""
-	ver.replaceAll( "[vV]", "" ).split( /\./ ).each { pad += it.padLeft( 2, '0' ) }
-	return pad
-}
 
 def getThisCopyright(){"&copy; 2019 C Steele "}
