@@ -1,11 +1,11 @@
 {
   "packageName": "Hubitat-BetterLaundryMonitor",
- 	"releaseNotes": "v1.5.0	Add Contact sensor child\n        Remove UpdateCheck, rely on HPM to check for a new version.\n1.4.10: Adjusted for better end of cycle. \n        Added Reset button.\n1.4.9:  Merged: Fix bug with power updates more frequent than delayEndDelay.",
+ 	"releaseNotes": "v1.5.2   Add Calibration\n       v1.5.0	Add Contact sensor child\n        Remove UpdateCheck, rely on HPM to check for a new version.\n1.4.10: Adjusted for better end of cycle. \n        Added Reset button.\n1.4.9:  Merged: Fix bug with power updates more frequent than delayEndDelay.",
 	"documentationLink": "https://github.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/blob/master/README.md",
   "author": "csteele",
-  "minimumHEVersion": "1.4.10",
-  "version": "1.5.0",
-  "dateReleased": "2019-09-07",
+  "minimumHEVersion": "2.3.0",
+  "version": "1.5.2",
+  "dateReleased": "2026/03/20",
   "apps": [
     {
       "id": "ffddcbb2-5ac6-40df-a25c-3a8a3046cc96",
@@ -14,7 +14,7 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Parent.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.5.0",
+      "version": "1.5.2",
       "primary": true
     },
     {
@@ -24,7 +24,7 @@
       "location": "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy",
       "required": true,
       "oauth": false,
-      "version": "1.5.0",
+      "version": "1.7.0",
       "primary": false
     }
   ]
