@@ -18,19 +18,22 @@
  *
  *
  *
+ * csteele: v1.5.2	Cosmetic version cleanup
+ * csteele: v1.5.1	Added Quick Reference Link
+ *                	 normalized log.debug. 
  * csteele: v1.5.0	Add Contact sensor child
  *                	 Remove UpdateCheck, rely on HPM to check for a new version.
  *
  */
  
-	public static String version()      {  return "v1.5.0"  }
+	public static String version()      {  return "v1.5.2"  }
 
 
 definition(
     name: "Better Laundry Monitor",
     namespace: "tierneykev",
     author: "Kevin Tierney, CSteele",
-    description: "Using a switch with powerMonitor capability, monitor the laundry cycle and alert when it starts or done.",
+    description: "Using a switch with powerMonitor capability, monitor the laundry cycle and alert when it starts or ends.",
     category: "Green Living",
     iconUrl: "",
     iconX2Url: "",
@@ -47,15 +50,16 @@ def mainPage() {
 	dynamicPage(name: "mainPage") {
 		section {    
 			paragraph title: "<Better Laundry Monitor",
-			"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power Switch child apps"
+			"<b>This parent app is a container for all:</b><br> Better Laundry Monitor - Power, Vibration or Contact Sensors"
 		}
-      	section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Power Switch App", multiple: true)}    
+      	section (){app(name: "BlMpSw", appName: "Better Laundry Monitor - Power Switch", namespace: "tierneykev", title: "New Better Laundry Monitor - Child App", multiple: true)}    
       	  
       	section (title: "<b>Name/Rename</b>") {label title: "Enter a name for this parent app (optional)", required: false}
 	
 		section ("Other preferences") {
 			input "debugOutput",   "bool", title: "<b>Enable debug logging?</b>", defaultValue: true
 			input "descTextEnable","bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
+			input name: "quickref", type: "hidden", title:"<a href='https://www.hubitatcommunity.com/QuikRef/honeywellThermoDriverInfo/index.html' target='_blank'>Quick Reference ${version()}</a>"
 		}
       	display()
 	} 
@@ -63,13 +67,13 @@ def mainPage() {
 
 
 def installed() {
-	log.debug "Installed with settings: ${settings}"
+	log.info "Installed with settings: ${settings}"
 	initialize()
 }
 
 
 def updated() {
-	log.debug "Updated with settings: ${settings}"
+	log.info "Updated with settings: ${settings}"
 	unschedule()
 	unsubscribe()
 	if (debugOutput) runIn(1800,logsOff)
@@ -95,7 +99,7 @@ def logsOff() {
 def display() {
 	section{
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
-		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
+		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele<br/>Version: ${version()} -  ${thisCopyright}</div>"
 	}
 }
   
