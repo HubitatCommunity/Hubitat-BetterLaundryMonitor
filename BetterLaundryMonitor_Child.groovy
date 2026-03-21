@@ -18,12 +18,15 @@
  *
  *
  *
+ * csteele: v1.7.0	Add Calibration option to Thresholds
+ * csteele: v1.6.0	Add Arbitrary Device / Attribute
+ *                	 Normalized log.debug. 
  * csteele: v1.5.0	Add Contact sensor child
  *                	 Remove UpdateCheck, rely on HPM to check for a new version.
  *
  */
 
-	public static String version()      {  return "v1.5.0"  }
+	public static String version()      {  return "v1.7.0"  }
 
 
 import groovy.time.*
@@ -34,7 +37,7 @@ definition(
 	author: "Kevin Tierney, ChrisUthe, CSteele",
 	description: "Child: powerMonitor capability, monitor the laundry cycle and alert when it's done.",
 	category: "Green Living",
-	    
+	importUrl: "https://raw.githubusercontent.com/HubitatCommunity/Hubitat-BetterLaundryMonitor/master/BetterLaundryMonitor_Child.groovy",
 	parent: "tierneykev:Better Laundry Monitor",
 	
 	iconUrl: "",
@@ -64,7 +67,7 @@ def mainPage() {
 		}
 		section("-= <b>Main Menu</b> =-") 
 		{
-			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor", contactSensor:"Contact Sensor"], required:true, submitOnChange:true)
+			input (name: "deviceType", title: "Type of Device", type: "enum", options: [powerMeter:"Power Meter", accelerationSensor:"Sequence Vibration Sensor", accelSensor:"Timed Vibration Sensor", contactSensor:"Contact Sensor", usersSensor:"Arbitrary Sensor"], required:true, submitOnChange:true)
 		}
 
 		if (deviceType) {
@@ -114,8 +117,25 @@ def sensorPage() {
 			}
 		}
 		if (deviceType == "contactSensor") {
-			section("<b>When Contct stops on this device</b>") {
+			section("<b>When Contact stops on this device</b>") {
 				input "contactSensor", "capability.contactSensor", title: "Contact Sensor" , multiple: false, required: false, defaultValue: null
+			}
+		}
+		if (deviceType == "usersSensor") {
+			section("<b>Pick an Arbitrary Sensor</b>") {
+				input "userSensor", "capability.*", title: "Arbitrary Sensor" , multiple: false, required: false, defaultValue: null, submitOnChange: true
+			}
+		}
+		if (deviceType == "usersSensor" && userSensor) {
+            section("<b>Pick a Device Attribute</b>") { ///
+				tags = userSensor.supportedAttributes.collect{''+ it +''} 
+				input "userAttrib", "enum",  options: tags, title: "Arbitrary Attribute" , multiple: false, required: false, defaultValue: null, submitOnChange: true
+			}
+		}
+		if (deviceType == "usersSensor" && userSensor && tags) {
+            section("<b>Pick an Attribute Type</b>") {
+            		tagType = ["powerMeter": "Power", "accelerationSensor": "Vibration Sensor", "contactSensor": "Contact Sensor"]
+				input "userAttribType", "enum",  options: tagType, title: "Arbitrary Attribute" , multiple: false, required: false, defaultValue: null
 			}
 		}
 	}
@@ -124,31 +144,64 @@ def sensorPage() {
 
 def thresholdPage() {
 	dynamicPage(name: "thresholdPage") {
-		if (deviceType == "accelerationSensor") {
+		if (deviceType == "powerMeter" || userAttribType == "powerMeter") {
+			section("<b>Calibration (Optional)</b>", hidden: false, hideable: true) {
+				input "calibrationEnabled", "bool", title: "Enable calibration mode", defaultValue: false, required: false, submitOnChange: true
+				if (calibrationEnabled) {
+					input "calibrationAutoApply", "bool", title: "Auto-apply recommended thresholds", defaultValue: false, required: false
+					if (state?.calibration?.status) {
+						paragraph "Calibration status: ${state.calibration.status}"
+					}
+					if (!calibrationAutoApply) {
+						input "applyCalButton", "button", title: "Apply Recommended Thresholds", backgroundColor: "Green", textColor: "white", submitOnChange: true
+					}
+					input "resetCalButton", "button", title: "Reset Learned Stats", backgroundColor: "Crimson", textColor: "white", submitOnChange: true
+					input "powerLogText", "textarea", title: "Optional: Paste Power Logs (for offline idle/active learn)", required: false, submitOnChange: true
+					input "parseLogsButton", "button", title: "Parse Logs + Recommend", backgroundColor: "Gray", textColor: "white", submitOnChange: true
+					if (state?.calibration?.recommended) {
+						def rec = state.calibration.recommended
+						paragraph "Recommended Power Values: <b>Start</b> = ${rec.startThreshold}W, <b>Stop</b> = ${rec.endThreshold}W, <b>Ignore</b> = ${rec.ignoreThreshold}W"
+						paragraph "Recommended Delay Values: <b>delayEndPwr</b> = ${rec.delayEndPwr ?: 'n/a'} reports, <b>delayEndDelay</b> = ${rec.delayEndDelay ?: 'n/a'} minutes"
+					}
+					if (state?.calibration?.status && isCalibrationSparse()) {
+						paragraph "<b>Note:</b> Not enough samples yet for reliable recommendations."
+					}
+				}
+			}
+		}
+		if (deviceType == "accelerationSensor" || userAttribType == "accelerationSensor") {
 			section("<b>Vibration Thresholds</b>", hidden: false, hideable: true) {
 				input "delayEndAcc", "number", title: "Stop after no vibration for this many sequential reportings:", defaultValue: "2", required: false
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
-		if (deviceType == "powerMeter") {
+		if (deviceType == "powerMeter" || userAttribType == "powerMeter") {
 			section ("<b>Power Thresholds</b>", hidden: false, hideable: true) {
-				input "startThreshold", "decimal", title: "Start cycle when power raises above (W)", defaultValue: "8", required: false
-				input "endThreshold", "decimal", title: "Stop cycle when power drops below (W)", defaultValue: "4", required: false
-				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings:", defaultValue: "2", required: false
-				input "delayEndDelay", "number", title: "Stop after power has been below the threshold for this many continuous minutes:", defaultValue: "0", required: false
-				input "ignoreThreshold", "decimal", title: "Optional: Ignore extraneous power readings above (W)", defaultValue: "1500", required: false
-                		input "startTimeThreshold", "number", title: "Optional: Time (in minutes) to wait before counting power threshold.  Great for pre-wash soaks.", required: false
+                paragraph "<b>Start of Cycle logic:</b> (to control when start-of-cycle is detected.)"
+                input "startTimeThreshold", "number", title: "Optional: Time (in minutes) to wait before counting power threshold.  Great for pre-wash soaks.", required: false
+				input "startThreshold", "decimal", title: "Start cycle when power (W) raises above (<b>Start</b>)", defaultValue: "8", required: false
+                paragraph "<br><b>End of Cycle logic:</b> (to control when end-of-cycle is detected.)"
+				input "minEndDetectMins", "number", title: "Optional: Minimum minutes after start before end detection begins", required: false
+                input "endThreshold", "decimal", title: "Stop cycle when power (W) drops below (<b>Stop</b>)", defaultValue: "4", required: false
+				input "delayEndPwr", "number", title: "Stop after power has been below the threshold for this many sequential reportings (<b>delayEndPwr</b>):", defaultValue: "2", required: false
+				input "delayEndDelay", "number", title: "Stop after power has been below the threshold for this many continuous minutes (<b>delayEndDelay</b>):", defaultValue: "0", required: false
+	            paragraph "<br><b>Tune Cycle logic:</b> (to ignore spikes and cap maximum runtime.)"				
+                input "ignoreThreshold", "decimal", title: "Optional: Ignore extraneous power (W) readings above (<b>Ignore</b>)", defaultValue: "1500", required: false
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
+                paragraph "<br><b>Wrinkle Cycle logic:</b> (to add a second notification, for dryers.)"				
+                input "wrinkleCycleCount", "number", title: "Optional: Wrinkle cycle count (send extra notification after N wrinkle cycles)", required: false
+				input "wrinkleWindowMins", "number", title: "Optional: Wrinkle monitoring window (minutes)", defaultValue: "120", required: false
+				input "wrinkleMessage", "text", title: "Optional: Wrinkle cycle notification message", required: false
 			}
 		}
-		if (deviceType == "accelSensor") {
+		if (deviceType == "accelSensor" || userAttribType == "accelSensor") {
 			section("<b>Time Thresholds (in minutes)</b>", hidden: false, hideable: true) {
 				input "fillTime", "decimal", title: "Time to fill tub (0 for Dryer)", required: false, defaultValue: 5
 				input "cycleTime", "decimal", title: "Minimum cycle time", required: false, defaultValue: 10
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
-		if (deviceType == "contactSensor") {
+		if (deviceType == "contactSensor" || userAttribType == "contactSensor") {
 			section ("<b>Contact Thresholds</b>", hidden: false, hideable: true) {
 				input "contCycleCount", "number", title: "Stop after this many cycles:", defaultValue: "2", required: false
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
@@ -181,7 +234,7 @@ def getSelectOk()
 {
 	def status =
 	[
-		sensorPage: pwrMeter ?: accelSensor ?: contactSensor,
+		sensorPage: pwrMeter ?: accelSensor ?: contactSensor ?: userSensor,
 		thresholdPage: cycleTime ?: fillTime ?: startThreshold ?: endThreshold ?: delayEndAcc ?: delayEndPwr ?: contCycleCount,
 		informPage: messageStart?.size() ?: message?.size()
 	]
@@ -192,6 +245,9 @@ def getSelectOk()
 def powerHandler(evt) {
 	def latestPower = pwrMeter.currentValue("power")
 	def delayEPloop = delayEndPwr-1 
+	calibrationSample(latestPower)
+	updateCalTiming(latestPower)
+	checkWrinkleExpiry()
 
 	if (debugOutput) log.debug "Power: ${latestPower}W, State: ${atomicState.cycleOn}, thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr} ${delayEndDelay} optional: ${ignoreThreshold} ${startTimeThreshold} ${cycleMax}"
 	
@@ -201,6 +257,12 @@ def powerHandler(evt) {
 		if (debugOutput) log.debug "Resetting end timer"
 	}
 	else if (!atomicState.cycleOn && (latestPower >= startThreshold) && (latestPower < ignoreThreshold)) { // latestpower < 1000: eliminate spikes that trigger false alarms
+		if (wrinkleEnabled() && state.wrinkleActive) {
+			state.wrinkleRunning = true
+			atomicState.powerOffDelay = 0
+			if (debugOutput) log.debug "Wrinkle cycle restart detected."
+			return
+		}
 		send(messageStart)
 		atomicState.cycleOn = true
 		atomicState.cycleEnding = false
@@ -223,37 +285,34 @@ def powerHandler(evt) {
 			if (descTextEnable) log.info "Dropped below threshold before start time threshold, cancelling."
 		}
 	}
+	// Delay end detection until minimum runtime has elapsed (e.g., soak phases)
+	else if (atomicState.cycleOn && !state.wrinkleRunning && !canCheckEndNow() && latestPower < endThreshold) {
+		if (debugOutput) log.debug "End detection delayed (${minEndDetectMins} min minimum runtime not reached)."
+		return
+	}
 	//first time we are below the threshold, hold and wait for X more.
-	else if (atomicState.cycleOn && latestPower < endThreshold && atomicState.powerOffDelay < delayEPloop){
+	else if ((atomicState.cycleOn || state.wrinkleRunning) && latestPower < endThreshold && atomicState.powerOffDelay < delayEPloop){
 		atomicState.powerOffDelay++
 		if (debugOutput) log.debug "We hit Power Delay ${atomicState.powerOffDelay} times"
 	}
 	//Reset Delay if it only happened once
-	else if (atomicState.cycleOn && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
+	else if ((atomicState.cycleOn || state.wrinkleRunning) && latestPower >= endThreshold && atomicState.powerOffDelay != 0) {
 		if (debugOutput) log.debug "We hit the Power Delay ${atomicState.powerOffDelay} times but cleared it"
 		atomicState.powerOffDelay = 0
 	}
 	// If the Machine stops drawing power for X times in a row, the cycle is complete, send notification
 	// or schedule future check if cycleEnd isn't set already
-	else if (atomicState.cycleOn && (latestPower < endThreshold) && (atomicState.cycleEnding != true)) {
+	else if ((atomicState.cycleOn || state.wrinkleRunning) && (latestPower < endThreshold) && (atomicState.cycleEnding != true)) {
 		// cycleDone already scheduled if cycleEnd is set already
 		atomicState.cycleEnding = true
 		atomicState.cycleEnd = now()
 		if (delayEndDelay > 0) {
-			if (debugOutput) log.debug "Ending duration is set, waiting"
+			if (debugOutput) log.debug "Ending duration is set, waiting $delayEndDelay minutes"
 			runIn(delayEndDelay*60, cycleDone)
 		}
 		else
 		{
-			send(message)
-			atomicState.cycleOn = false
-			updateMyLabel()
-			atomicState.powerOffDelay = 0
-			state.remove("startedAt")
-			atomicState.cycleEnd = -1
-			atomicState.cycleEnding = false
-			if (descTextEnable) log.info "Cycle finished."
-			if(switchList) { switchList*.off() }
+			handleCycleEnd()
 		}
 
 	}
@@ -262,15 +321,7 @@ def powerHandler(evt) {
 
 def cycleDone() {
 	if (atomicState.cycleEnd != -1 && now() - atomicState.cycleEnd > (delayEndDelay*60)-10000) {
-		send(message)
-		atomicState.cycleOn = false
-		atomicState.cycleEnding = false
-		atomicState.cycleEnd = now()
-		updateMyLabel()
-		atomicState.powerOffDelay = 0
-		state.remove("startedAt")
-		if (debugOutput) log.debug "Cycle finished after delay."
-		if(switchList) { switchList*.off() }
+		handleCycleEnd()
     }
     else {
     	if (debugOutput) log.debug "Power resumed during timeout"
@@ -444,7 +495,7 @@ def contactHandler(evt) {
 			if (descTextEnable) log.info "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
 		}
 	}
- 
+
 	if (debugOutput) log.debug "Contact Event: $evt.value, isRunning: $state.isRunning, $state.contOffDelay, latestContact: $latestContact, startTimeThreshold: $startTimeThreshold"
 }
 
@@ -542,6 +593,7 @@ def installed() {
 	initialize()
 	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
 	app.clearSetting("descTextEnable")
+	app.updateSetting("userSensor", "")
 	if (descTextEnable) log.info "Installed with settings: ${settings}"
 }
 
@@ -552,6 +604,7 @@ def updated() {
 	initialize()
 	if (blockIt) {subscribe(blockIt, "switch", blockItHandler)}
 	if (descTextEnable) log.info "Updated with settings: ${settings}"
+	if (!state?.calibration?.status) state.calibration.status = ""
 }
 
 
@@ -565,30 +618,32 @@ def initialize() {
 	schedule("17 5 0 * * ?", updateMyLabel)	// Fix the date string after the day changes
 	updateMyLabel()
 	
-//	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
-//	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
+///	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
+///	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
+///	app.clearSetting("userSensor")
+
 }
 
 
 def reSubscribe() {
-	if (settings.deviceType == "powerMeter") {
+	if (settings.deviceType == "powerMeter" || userAttribType == "powerMeter") {
 		unsubscribe(accelSensor)
 		unsubscribe(contactSensor)
 		subscribe(pwrMeter, "power", powerHandler)
 		if (debugOutput) log.debug "Cycle: ${atomicState.cycleOn} thresholds: ${startThreshold} ${endThreshold} ${delayEndPwr}/${delayEndAcc}"
 	} 
-	else if (settings.deviceType == "accelerationSensor") {
+	else if (settings.deviceType == "accelerationSensor" || userAttribType == "accelerationSensor") {
 		unsubscribe(pwrMeter)
 		unsubscribe(contactSensor)
 		subscribe(accelSensor, "acceleration", accelerationHandler)
 	}
-	else if (settings.deviceType == "accelSensor") {
+	else if (settings.deviceType == "accelSensor" || userAttribType == "accelSensor") {
 		unsubscribe(pwrMeter)
 		unsubscribe(contactSensor)
 		subscribe(accelSensor, "acceleration.active", accelerationActiveHandler)
 		subscribe(accelSensor, "acceleration.inactive", accelerationInactiveHandler)
 	}
-	else if (settings.deviceType == "contactSensor") {
+	else if (settings.deviceType == "contactSensor" || userAttribType == "contactSensor") {
 		unsubscribe(pwrMeter)
 		unsubscribe(accelSensor)
 		subscribe(contactSensor, "contact.open", contactHandler)
@@ -608,7 +663,7 @@ def appButtonHandler(btn) {
 		atomicState.isPaused = false
 		updateMyLabel()
         break
-        case "resetButton":
+		case "resetButton":
         	state.isRunning = false
 		atomicState.cycleEnd = now()
 		atomicState.cycleOn = false
@@ -616,11 +671,21 @@ def appButtonHandler(btn) {
 		state.contOffDelay = 0
 		atomicState.cycleEnd = -1
 		atomicState.cycleEnding = false
+		clearWrinkle()
 		updateMyLabel()
 		unschedule(checkCycleMax)
 		if (debugOutput) log.debug "Reset to Cycle finished."
 		if(switchList) { switchList*.off() }
         break
+		case "applyCalButton":
+			applyRecommendedThresholds()
+		break
+		case "parseLogsButton":
+			parsePowerLogsAndRecommend()
+		break
+		case "resetCalButton":
+			resetCalibrationStats()
+		break
     }
 }
 
@@ -641,9 +706,245 @@ def display()
 {
 	section {
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
-		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele, Barry Burke<br/>Version Status: $state.Status<br>Current Version: ${version()} -  ${thisCopyright}</div>"
+		paragraph "<div style='color:#1A77C9;text-align:center;font-weight:small;font-size:9px'>Developed by: Kevin Tierney, ChrisUthe, C Steele, Barry Burke<br/>Version: ${version()} -  ${thisCopyright}</div>"
     }
 }
+
+def calibrationSample(powerVal) {
+	if (!calibrationEnabled) return
+	state.calibration = state.calibration ?: [:]
+	if (powerVal == null) return
+	if (!atomicState.cycleOn) {
+		updateStatsKey("idleStats", powerVal)
+	} else {
+		def lower = (startThreshold ?: (state.calibration?.recommended?.startThreshold ?: 0)) as Double
+		def upperOk = (ignoreThreshold ? (powerVal < ignoreThreshold) : true)
+		if (powerVal >= lower && upperOk) {
+			updateStatsKey("activeStats", powerVal)
+		}
+	}
+	recommendThresholds()
+	if (calibrationAutoApply) applyRecommendedThresholds()
+	updateCalibrationStatus()
+}
+
+def updateCalTiming(powerVal) {
+	if (!calibrationEnabled) return
+	state.calibration = state.calibration ?: [:]
+	state.calibration.meta = state.calibration.meta ?: [:]
+	def meta = state.calibration.meta
+	def nowTs = now()
+	if (meta.lastEventTs) {
+		def intervalSec = Math.max(0.1d, (nowTs - meta.lastEventTs) / 1000d)
+		def prev = meta.avgIntervalSec ?: intervalSec
+		meta.avgIntervalSec = (prev * 0.8d) + (intervalSec * 0.2d)
+	}
+	meta.lastEventTs = nowTs
+	// Track mid-cycle below-threshold gaps to suggest end-delay
+	if (atomicState.cycleOn) {
+		if (powerVal != null && powerVal < (endThreshold ?: 0)) {
+			if (!meta.belowStartTs) meta.belowStartTs = nowTs
+		} else if (meta.belowStartTs) {
+			def durSec = Math.max(0d, (nowTs - meta.belowStartTs) / 1000d)
+			meta.maxBelowDurationSec = Math.max(meta.maxBelowDurationSec ?: 0d, durSec)
+			meta.belowStartTs = null
+		}
+	} else {
+		meta.belowStartTs = null
+	}
+	state.calibration.meta = meta
+}
+
+def canCheckEndNow() {
+	if (!minEndDetectMins || !atomicState.cycleStart) return true
+	def minMillis = (minEndDetectMins as Double) * 60000d
+	return (now() - atomicState.cycleStart) >= minMillis
+}
+
+def resetCalibrationStats() {
+	state.calibration = [:]
+	updateCalibrationStatus()
+	if (descTextEnable) log.info "Calibration stats reset."
+}
+
+def updateCalibrationStatus() {
+	def idleCnt = state.calibration?.idleStats?.count ?: 0
+	def activeCnt = state.calibration?.activeStats?.count ?: 0
+	state.calibration.status = "idle samples: ${idleCnt}, active samples: ${activeCnt}, updated ${new Date().format('h:mma').toLowerCase()}"
+}
+
+def isCalibrationSparse() {
+	def idleCnt = state.calibration?.idleStats?.count ?: 0
+	def activeCnt = state.calibration?.activeStats?.count ?: 0
+	return (idleCnt < 10 || activeCnt < 10)
+}
+
+def handleCycleEnd() {
+	if (wrinkleEnabled() && state.wrinkleActive && state.wrinkleRunning) {
+		state.wrinkleCount = (state.wrinkleCount ?: 0) + 1
+		state.wrinkleRunning = false
+		atomicState.powerOffDelay = 0
+		atomicState.cycleEnding = false
+		if (descTextEnable) log.info "Wrinkle cycle count: ${state.wrinkleCount}"
+		if (state.wrinkleCount >= (wrinkleCycleCount as Integer)) {
+			send(wrinkleMessage ?: message)
+			clearWrinkle()
+		}
+	} else {
+		send(message)
+		atomicState.cycleOn = false
+		updateMyLabel()
+		atomicState.powerOffDelay = 0
+		state.remove("startedAt")
+		atomicState.cycleEnd = -1
+		atomicState.cycleEnding = false
+		if (descTextEnable) log.info "Cycle finished."
+		if (switchList) { switchList*.off() }
+		if (wrinkleEnabled() && !state.wrinkleActive) {
+			state.wrinkleActive = true
+			state.wrinkleRunning = false
+			state.wrinkleCount = 0
+			state.wrinkleWindowStart = now()
+			if (descTextEnable) log.info "Wrinkle monitoring started."
+		}
+	}
+}
+
+def wrinkleEnabled() {
+	return (wrinkleCycleCount != null && (wrinkleCycleCount as Integer) > 0)
+}
+
+def checkWrinkleExpiry() {
+	if (!state.wrinkleActive) return
+	def mins = (wrinkleWindowMins ?: 120) as Integer
+	if (now() - (state.wrinkleWindowStart ?: now()) > (mins * 60000)) {
+		clearWrinkle()
+	}
+}
+
+def clearWrinkle() {
+	state.wrinkleActive = false
+	state.wrinkleRunning = false
+	state.wrinkleCount = 0
+	state.wrinkleWindowStart = null
+	if (descTextEnable) log.info "Wrinkle monitoring ended."
+}
+
+def recommendThresholds() {
+	def cal = state.calibration ?: [:]
+	def idleStats = cal.idleStats ?: cal.stats
+	def activeStats = cal.activeStats
+	def idleMean = idleStats?.mean
+	def idleStd = statsStd(idleStats)
+	def activeMean = activeStats?.mean
+	def activeMax = activeStats?.max
+	if (idleMean == null) return
+	def idleMax = idleStats?.max ?: idleMean
+	def start = idleMean + Math.max(2d, 3d * idleStd)
+	def endv = idleMean + Math.max(1d, 2d * idleStd)
+	// Enforce floors and keep above observed idle spikes
+	start = Math.max(start, idleMax + 1.5d)
+	endv = Math.max(endv, idleMax + 0.5d)
+	start = Math.max(start, 5d)
+	endv = Math.max(endv, 2d)
+	if (endv >= start) endv = Math.max(2d, start - 0.5d)
+	def ignore
+	if (activeMean != null) {
+		ignore = Math.max(activeMean * 2d, activeMax ? (activeMax * 1.2d) : 0d)
+		ignore = Math.max(ignore, 300d)
+	} else {
+		ignore = Math.max(1500d, idleMean + (10d * idleStd))
+	}
+	ignore = Math.max(ignore, start + 50d)
+	cal.recommended = [
+		startThreshold: round1(start),
+		endThreshold: round1(endv),
+		ignoreThreshold: round1(ignore)
+	]
+	// Delay suggestions based on observed reporting interval and mid-cycle dips
+	def meta = cal.meta ?: [:]
+	def avgInt = meta.avgIntervalSec ?: 0d
+	def maxBelow = meta.maxBelowDurationSec ?: 0d
+	def delayMins = maxBelow > 0 ? Math.max(1, Math.round((maxBelow / 60d) + 1d) as Integer) : null
+	def delayCount = avgInt > 0 ? Math.max(2, Math.round((120d / avgInt)) as Integer) : null
+	cal.recommended.delayEndDelay = delayMins
+	cal.recommended.delayEndPwr = delayCount
+	state.calibration = cal
+}
+
+def applyRecommendedThresholds() {
+	def rec = state?.calibration?.recommended
+	if (!rec) return
+	app.updateSetting("startThreshold",[value: "${rec.startThreshold}", type:"decimal"])
+	app.updateSetting("endThreshold",[value: "${rec.endThreshold}", type:"decimal"])
+	app.updateSetting("ignoreThreshold",[value: "${rec.ignoreThreshold}", type:"decimal"])
+	if (rec.delayEndPwr != null) {
+		app.updateSetting("delayEndPwr",[value: "${rec.delayEndPwr}", type:"number"])
+	}
+	if (rec.delayEndDelay != null) {
+		app.updateSetting("delayEndDelay",[value: "${rec.delayEndDelay}", type:"number"])
+	}
+	if (descTextEnable) log.info "Applied recommended thresholds: ${rec}"
+}
+
+def parsePowerLogsAndRecommend() {
+	if (!powerLogText) return
+	def values = []
+	powerLogText.eachLine { line ->
+		def m = (line =~ /power is ([0-9.]+) W/)
+		if (m.find()) {
+			values << (m.group(1) as Double)
+		}
+	}
+	if (!values) return
+	values = values.take(500)
+	state.calibration = state.calibration ?: [:]
+	state.calibration.idleStats = buildStats(values)
+	recommendThresholds()
+	if (calibrationAutoApply) applyRecommendedThresholds()
+	updateCalibrationStatus()
+	if (descTextEnable) log.info "Parsed ${values.size()} power samples from logs"
+}
+
+def updateStatsKey(key, powerVal) {
+	state.calibration = state.calibration ?: [:]
+	def stats = state.calibration[key] ?: [count:0, mean:0d, m2:0d, min:999999d, max:0d]
+	def v = powerVal as Double
+	stats.count = (stats.count ?: 0) + 1
+	def delta = v - stats.mean
+	stats.mean = stats.mean + (delta / stats.count)
+	def delta2 = v - stats.mean
+	stats.m2 = stats.m2 + (delta * delta2)
+	stats.min = Math.min(stats.min ?: v, v)
+	stats.max = Math.max(stats.max ?: v, v)
+	state.calibration[key] = stats
+}
+
+def buildStats(list) {
+	def stats = [count:0, mean:0d, m2:0d, min:999999d, max:0d]
+	list.each { v ->
+		def d = v as Double
+		stats.count = stats.count + 1
+		def delta = d - stats.mean
+		stats.mean = stats.mean + (delta / stats.count)
+		def delta2 = d - stats.mean
+		stats.m2 = stats.m2 + (delta * delta2)
+		stats.min = Math.min(stats.min, d)
+		stats.max = Math.max(stats.max, d)
+	}
+	return stats
+}
+
+def statsStd(stats) {
+	if (!stats?.count || stats.count < 2) return 0d
+	def variance = stats.m2 / (stats.count - 1)
+	return Math.sqrt(Math.max(0d, variance))
+}
+
+def round1(v) {
+	return (Math.round((v as Double) * 10d) / 10d)
+}
+
 
 
 void updateMyLabel() {
