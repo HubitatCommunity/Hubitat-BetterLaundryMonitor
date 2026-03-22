@@ -18,6 +18,7 @@
  *
  *
  *
+ * csteele: v1.7.1	Improved Calibration paste parsing
  * csteele: v1.7.0	Add Calibration option to Thresholds
  * csteele: v1.6.0	Add Arbitrary Device / Attribute
  *                	 Normalized log.debug. 
@@ -26,7 +27,7 @@
  *
  */
 
-	public static String version()      {  return "v1.7.0"  }
+	public static String version()      {  return "v1.7.1"  }
 
 
 import groovy.time.*
@@ -52,7 +53,6 @@ preferences {
 	page (name: "thresholdPage")
 	page (name: "informPage")
 }
-//<div style='color:#ffffff;font-weight: bold;background-color:#81BC00;border: 1px solid;box-shadow: 2px 3px #A9A9A9'>${myText}</div>
 
 
 def mainPage() {
@@ -127,7 +127,7 @@ def sensorPage() {
 			}
 		}
 		if (deviceType == "usersSensor" && userSensor) {
-            section("<b>Pick a Device Attribute</b>") { ///
+            section("<b>Pick a Device Attribute</b>") { 
 				tags = userSensor.supportedAttributes.collect{''+ it +''} 
 				input "userAttrib", "enum",  options: tags, title: "Arbitrary Attribute" , multiple: false, required: false, defaultValue: null, submitOnChange: true
 			}
@@ -204,6 +204,7 @@ def thresholdPage() {
 		if (deviceType == "contactSensor" || userAttribType == "contactSensor") {
 			section ("<b>Contact Thresholds</b>", hidden: false, hideable: true) {
 				input "contCycleCount", "number", title: "Stop after this many cycles:", defaultValue: "2", required: false
+
 				input "cycleMax", "number", title: "Optional: Maximum cycle time (acts as a deadman timer.)", required: false
 			}
 		}
@@ -316,6 +317,7 @@ def powerHandler(evt) {
 		}
 
 	}
+
 }
 
 
@@ -410,6 +412,9 @@ def checkCycleMax() {
 		if(switchList) { switchList*.off() }
 	}
 	if (atomicState.cycleOn) {
+		if (calibrationEnabled && (settings.deviceType == "powerMeter" || userAttribType == "powerMeter")) {
+			markCalibrationFailure("deadman timeout")
+		}
 		send(message)
 		atomicState.cycleOn = false
 		atomicState.cycleEnd = now()
@@ -494,8 +499,7 @@ def contactHandler(evt) {
 			}
 			if (descTextEnable) log.info "Cycle finished, startedAt: ${state.startedAt}, stoppedAt: ${state.stoppedAt}"
 		}
-	}
-
+	} 
 	if (debugOutput) log.debug "Contact Event: $evt.value, isRunning: $state.isRunning, $state.contOffDelay, latestContact: $latestContact, startTimeThreshold: $startTimeThreshold"
 }
 
@@ -604,7 +608,6 @@ def updated() {
 	initialize()
 	if (blockIt) {subscribe(blockIt, "switch", blockItHandler)}
 	if (descTextEnable) log.info "Updated with settings: ${settings}"
-	if (!state?.calibration?.status) state.calibration.status = ""
 }
 
 
@@ -617,11 +620,6 @@ def initialize() {
 
 	schedule("17 5 0 * * ?", updateMyLabel)	// Fix the date string after the day changes
 	updateMyLabel()
-	
-///	app.clearSetting("debugOutput")	// app.updateSetting() only updates, won't create.
-///	app.clearSetting("descTextEnable") // un-comment these, click Done then replace the // comment
-///	app.clearSetting("userSensor")
-
 }
 
 
@@ -710,6 +708,7 @@ def display()
     }
 }
 
+
 def calibrationSample(powerVal) {
 	if (!calibrationEnabled) return
 	state.calibration = state.calibration ?: [:]
@@ -727,6 +726,7 @@ def calibrationSample(powerVal) {
 	if (calibrationAutoApply) applyRecommendedThresholds()
 	updateCalibrationStatus()
 }
+
 
 def updateCalTiming(powerVal) {
 	if (!calibrationEnabled) return
@@ -755,11 +755,13 @@ def updateCalTiming(powerVal) {
 	state.calibration.meta = meta
 }
 
+
 def canCheckEndNow() {
 	if (!minEndDetectMins || !atomicState.cycleStart) return true
 	def minMillis = (minEndDetectMins as Double) * 60000d
 	return (now() - atomicState.cycleStart) >= minMillis
 }
+
 
 def resetCalibrationStats() {
 	state.calibration = [:]
@@ -767,17 +769,22 @@ def resetCalibrationStats() {
 	if (descTextEnable) log.info "Calibration stats reset."
 }
 
+
 def updateCalibrationStatus() {
 	def idleCnt = state.calibration?.idleStats?.count ?: 0
 	def activeCnt = state.calibration?.activeStats?.count ?: 0
+	def existing = state.calibration?.status ?: ""
+	if (existing.startsWith("log split:")) return
 	state.calibration.status = "idle samples: ${idleCnt}, active samples: ${activeCnt}, updated ${new Date().format('h:mma').toLowerCase()}"
 }
+
 
 def isCalibrationSparse() {
 	def idleCnt = state.calibration?.idleStats?.count ?: 0
 	def activeCnt = state.calibration?.activeStats?.count ?: 0
 	return (idleCnt < 10 || activeCnt < 10)
 }
+
 
 def handleCycleEnd() {
 	if (wrinkleEnabled() && state.wrinkleActive && state.wrinkleRunning) {
@@ -810,9 +817,11 @@ def handleCycleEnd() {
 	}
 }
 
+
 def wrinkleEnabled() {
 	return (wrinkleCycleCount != null && (wrinkleCycleCount as Integer) > 0)
 }
+
 
 def checkWrinkleExpiry() {
 	if (!state.wrinkleActive) return
@@ -822,6 +831,7 @@ def checkWrinkleExpiry() {
 	}
 }
 
+
 def clearWrinkle() {
 	state.wrinkleActive = false
 	state.wrinkleRunning = false
@@ -829,6 +839,19 @@ def clearWrinkle() {
 	state.wrinkleWindowStart = null
 	if (descTextEnable) log.info "Wrinkle monitoring ended."
 }
+
+
+def markCalibrationFailure(String reason) {
+	state.calibration = state.calibration ?: [:]
+	def cnt = (state.calibration.failureCount ?: 0) + 1
+	state.calibration.failureCount = cnt
+	state.calibration.lastFailure = [ts: now(), reason: reason]
+	if (state.calibration?.recommended) {
+		applyRecommendedThresholds()
+	}
+	if (debugOutput) log.debug "Calibration failure (internal): ${reason} (count=${cnt})"
+}
+
 
 def recommendThresholds() {
 	def cal = state.calibration ?: [:]
@@ -872,6 +895,7 @@ def recommendThresholds() {
 	state.calibration = cal
 }
 
+
 def applyRecommendedThresholds() {
 	def rec = state?.calibration?.recommended
 	if (!rec) return
@@ -887,24 +911,80 @@ def applyRecommendedThresholds() {
 	if (descTextEnable) log.info "Applied recommended thresholds: ${rec}"
 }
 
+
 def parsePowerLogsAndRecommend() {
 	if (!powerLogText) return
 	def values = []
+	def samples = []
 	powerLogText.eachLine { line ->
 		def m = (line =~ /power is ([0-9.]+) W/)
 		if (m.find()) {
-			values << (m.group(1) as Double)
+			def v = (m.group(1) as Double)
+			values << v
+			def ts = parseTimestampFromLine(line)
+			if (ts != null) samples << [ts: ts, v: v]
 		}
 	}
 	if (!values) return
 	values = values.take(500)
 	state.calibration = state.calibration ?: [:]
-	state.calibration.idleStats = buildStats(values)
+	def split = kmeans3Split(values)
+	if (split?.ok) {
+		// Combine lowest + middle clusters as idle (off + low draw), highest as active
+		def idleVals = split.clusters[0] + split.clusters[1]
+		def activeVals = split.clusters[2]
+		state.calibration.idleStats = buildStats(idleVals)
+		state.calibration.activeStats = buildStats(activeVals)
+		// Build meta from timestamped samples to emulate live calibration
+		def meta = [:]
+		if (samples && split.means?.size() == 3) {
+			def activeCut = split.means[1]
+			def ordered = samples.sort { a, b -> a.ts <=> b.ts }
+			def diffs = []
+			for (int i = 1; i < ordered.size(); i++) {
+				def d = (ordered[i].ts - ordered[i - 1].ts) / 1000d
+				if (d > 0) diffs << d
+			}
+			if (diffs) meta.avgIntervalSec = diffs.sum() / diffs.size()
+			// Track below-active gaps between active samples
+			def inActive = false
+			def belowStart = null
+			def maxBelow = 0d
+			ordered.each { s ->
+				if (s.v >= activeCut) {
+					if (belowStart != null) {
+						def dur = (s.ts - belowStart) / 1000d
+						if (dur > maxBelow) maxBelow = dur
+						belowStart = null
+					}
+					inActive = true
+				} else if (inActive) {
+					if (belowStart == null) belowStart = s.ts
+				}
+			}
+			if (belowStart != null) {
+				def dur = (ordered[-1].ts - belowStart) / 1000d
+				if (dur > maxBelow) maxBelow = dur
+			}
+			if (maxBelow > 0d) meta.maxBelowDurationSec = maxBelow
+		}
+		meta.sampleCount = samples?.size() ?: 0
+		state.calibration.meta = meta
+		def avgSec = meta?.avgIntervalSec ? round1(meta.avgIntervalSec) : "n/a"
+		def maxBelowSec = meta?.maxBelowDurationSec ? round1(meta.maxBelowDurationSec) : "n/a"
+		state.calibration.status = "log split: idle=${idleVals.size()}, active=${activeVals.size()}, means=${split.means.collect{round1(it)}}, samples=${meta.sampleCount}, avgSec=${avgSec}, maxBelowSec=${maxBelowSec}, updated ${new Date().format('h:mma').toLowerCase()}"
+	} else {
+		state.calibration.idleStats = buildStats(values)
+		state.calibration.activeStats = null
+		state.calibration.meta = [:]
+		state.calibration.status = "log split failed (${split?.reason ?: 'unknown'}); treated all as idle, updated ${new Date().format('h:mma').toLowerCase()}"
+	}
 	recommendThresholds()
 	if (calibrationAutoApply) applyRecommendedThresholds()
 	updateCalibrationStatus()
 	if (descTextEnable) log.info "Parsed ${values.size()} power samples from logs"
 }
+
 
 def updateStatsKey(key, powerVal) {
 	state.calibration = state.calibration ?: [:]
@@ -919,6 +999,7 @@ def updateStatsKey(key, powerVal) {
 	stats.max = Math.max(stats.max ?: v, v)
 	state.calibration[key] = stats
 }
+
 
 def buildStats(list) {
 	def stats = [count:0, mean:0d, m2:0d, min:999999d, max:0d]
@@ -935,16 +1016,80 @@ def buildStats(list) {
 	return stats
 }
 
+
 def statsStd(stats) {
 	if (!stats?.count || stats.count < 2) return 0d
 	def variance = stats.m2 / (stats.count - 1)
 	return Math.sqrt(Math.max(0d, variance))
 }
 
+
 def round1(v) {
 	return (Math.round((v as Double) * 10d) / 10d)
 }
 
+
+def parseTimestampFromLine(String line) {
+	// Accept both columnar and mushed Hubitat log formats
+	try {
+		def dateM = (line =~ /(\d{4}-\d{2}-\d{2})/)
+		def timeM = (line =~ /(\d{2}:\d{2}:\d{2}\.\d{3})/)
+		if (!dateM.find() || !timeM.find()) return null
+		def dateStr = dateM.group(1)
+		def timeStr = timeM.group(1)
+		def ampm = null
+		def ampmM = (line =~ /(?i)(AM|PM)/)
+		if (ampmM.find()) {
+			ampm = ampmM.group(1).toUpperCase()
+		}
+		if (!ampm) return null
+		return Date.parse("yyyy-MM-dd hh:mm:ss.SSS a", "${dateStr} ${timeStr} ${ampm}").time
+	} catch (Exception ignored) {
+		// ignore parse failures
+	}
+	return null
+}
+
+
+def kmeans3Split(List values) {
+	if (!values || values.size() < 9) return [ok:false, reason:"too few samples"]
+	def vals = values.collect { it as Double }.sort()
+	def p10 = vals[(int)Math.round(0.10d * (vals.size() - 1))]
+	def p50 = vals[(int)Math.round(0.50d * (vals.size() - 1))]
+	def p90 = vals[(int)Math.round(0.90d * (vals.size() - 1))]
+	def means = [p10, p50, p90]
+	def clusters = [[], [], []]
+	for (int iter = 0; iter < 30; iter++) {
+		clusters = [[], [], []]
+		vals.each { v ->
+			def d0 = Math.abs(v - means[0])
+			def d1 = Math.abs(v - means[1])
+			def d2 = Math.abs(v - means[2])
+			if (d0 <= d1 && d0 <= d2) clusters[0] << v
+			else if (d1 <= d0 && d1 <= d2) clusters[1] << v
+			else clusters[2] << v
+		}
+		def newMeans = means.collect { it }
+		for (int i = 0; i < 3; i++) {
+			if (clusters[i].size() > 0) {
+				newMeans[i] = clusters[i].sum() / clusters[i].size()
+			}
+		}
+		if (newMeans == means) break
+		means = newMeans
+	}
+	if (clusters.any { it.size() == 0 }) return [ok:false, reason:"empty cluster"]
+	// Sort clusters by mean (low -> high)
+	def zipped = [0,1,2].collect { idx -> [idx: idx, mean: means[idx], vals: clusters[idx]] }
+	zipped.sort { a,b -> a.mean <=> b.mean }
+	def sortedMeans = zipped.collect { it.mean }
+	def sortedClusters = zipped.collect { it.vals }
+	// Guard rails: require reasonable separation between low/mid/high
+	if ((sortedMeans[2] - sortedMeans[1] < 100d) || (sortedMeans[1] - sortedMeans[0] < 50d)) {
+		return [ok:false, reason:"clusters too close", means: sortedMeans, clusters: sortedClusters]
+	}
+	return [ok:true, means: sortedMeans, clusters: sortedClusters]
+}
 
 
 void updateMyLabel() {
